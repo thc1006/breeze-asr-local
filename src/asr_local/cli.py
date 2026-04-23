@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 import time
 from pathlib import Path
 from typing import Sequence
 
 from .audio import AudioConversionError, convert_to_16k_mono_wav
-from .model import VARIANT_FILES, ensure_ggml
+from .model import GgmlValidationError, VARIANT_FILES, ensure_ggml
 from .transcriber import WhisperCliError, run_whisper
 from .writer import save_transcript
 
@@ -32,7 +33,7 @@ def choose_audio_ctx(duration_s: float) -> int:
     """
     if duration_s < 0:
         raise ValueError(f"duration_s must be non-negative, got {duration_s}")
-    needed = int(duration_s * _MEL_FPS) + _SAFETY_PAD_FRAMES
+    needed = math.ceil(duration_s * _MEL_FPS) + _SAFETY_PAD_FRAMES
     if needed >= _FULL_CTX_FRAMES:
         return 0
     aligned = ((needed + 63) // 64) * 64
@@ -53,6 +54,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--threads", type=int, default=8, help="whisper-cli thread count")
     parser.add_argument("--language", default="zh", help="Source language (default: zh)")
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="Abort if whisper-cli exceeds N seconds (default: no timeout)",
+    )
     parser.add_argument(
         "--audio-ctx",
         type=int,
@@ -99,6 +106,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             language=args.language,
             threads=args.threads,
             audio_ctx=audio_ctx,
+            timeout=args.timeout,
         )
         elapsed = time.perf_counter() - t0
         rtf = elapsed / duration if duration > 0 else float("inf")
@@ -120,6 +128,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     except WhisperCliError as e:
         print(f"Error: whisper-cli failed - {e}", file=sys.stderr)
         return 4
+    except GgmlValidationError as e:
+        print(f"Error: model validation failed - {e}", file=sys.stderr)
+        return 5
+    except OSError as e:
+        # HF download network errors (ConnectionError/TimeoutError) + generic IO.
+        print(f"Error: model download or IO failed - {e}", file=sys.stderr)
+        return 6
     finally:
         if wav_path is not None and wav_path.exists():
             try:

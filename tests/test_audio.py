@@ -75,7 +75,12 @@ class TestConvertErrors:
 
 
 class TestConvertRealM4a:
-    """Integration test against the user's real m4a clip."""
+    """Integration-flavour test against the user's real m4a clip.
+
+    Runs fast (~0.5 s) when 1woman.m4a is present; the `real_m4a` fixture
+    skips the test on CI / boxes without the sample file, so no slow
+    marker is needed.
+    """
 
     def test_m4a_converts_to_valid_wav(self, real_m4a: Path) -> None:
         out, duration = convert_to_16k_mono_wav(real_m4a)

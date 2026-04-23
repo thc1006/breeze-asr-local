@@ -37,14 +37,17 @@ class TestChooseAudioCtx:
             ac = choose_audio_ctx(dur)
             assert ac == 0 or ac % 64 == 0
 
-    def test_5s_clip_regression(self) -> None:
-        # Previous buggy code returned 512 (5.12 s cap). Must be > 580 frames.
-        assert choose_audio_ctx(5.8) >= 580
+    def test_5s_clip_regression_with_pad(self) -> None:
+        # Previous bug: returned 512 (5.12 s, truncated tail) for 5.8 s clip.
+        # Also lock in the safety pad: 580 frames needed + 64 pad = 644
+        # minimum before 64-alignment rounds it to 704.
+        assert choose_audio_ctx(5.8) >= 580 + 64
 
     def test_zero_duration_returns_small_nonzero(self) -> None:
         # Pathological: 0 s should still return a valid small ac.
         ac = choose_audio_ctx(0.0)
         assert ac > 0 and ac < 3000
+        assert ac % 64 == 0
 
     def test_negative_duration_raises(self) -> None:
         import pytest as _pt
@@ -153,6 +156,88 @@ class TestMain:
         err = capsys.readouterr().err
         assert "audio conversion failed" in err
         assert "invalid stream" in err
+
+    def test_whisper_cli_not_found_exits_with_code_4(
+        self, tmp_path: Path, mocker, capsys
+    ) -> None:
+        # WhisperCliNotFoundError is a WhisperCliError subclass and must
+        # flow through the same error handler.
+        from asr_local.transcriber import WhisperCliNotFoundError
+
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"\x00")
+        wav = tmp_path / "converted.wav"
+        wav.write_bytes(b"\x00")
+        model = tmp_path / "m.bin"
+        model.write_bytes(b"\x00")
+        mocker.patch(
+            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0)
+        )
+        mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
+        mocker.patch(
+            "asr_local.cli.run_whisper",
+            side_effect=WhisperCliNotFoundError("binary missing"),
+        )
+        rc = cli.main([str(audio)])
+        assert rc == 4
+        assert "whisper-cli failed" in capsys.readouterr().err
+
+    def test_ggml_validation_error_exits_with_code_5(
+        self, tmp_path: Path, mocker, capsys
+    ) -> None:
+        from asr_local.model import GgmlValidationError
+
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"\x00")
+        wav = tmp_path / "converted.wav"
+        wav.write_bytes(b"\x00")
+        mocker.patch(
+            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0)
+        )
+        mocker.patch(
+            "asr_local.cli.ensure_ggml",
+            side_effect=GgmlValidationError("bad magic"),
+        )
+        rc = cli.main([str(audio)])
+        assert rc == 5
+        assert "model validation failed" in capsys.readouterr().err
+
+    def test_network_error_exits_with_code_6(
+        self, tmp_path: Path, mocker, capsys
+    ) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"\x00")
+        wav = tmp_path / "converted.wav"
+        wav.write_bytes(b"\x00")
+        mocker.patch(
+            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0)
+        )
+        mocker.patch(
+            "asr_local.cli.ensure_ggml",
+            side_effect=ConnectionError("HF unreachable"),
+        )
+        rc = cli.main([str(audio)])
+        assert rc == 6
+        assert "download or IO failed" in capsys.readouterr().err
+
+    def test_timeout_flag_forwarded_to_run_whisper(
+        self, tmp_path: Path, mocker
+    ) -> None:
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"\x00")
+        wav = tmp_path / "converted.wav"
+        wav.write_bytes(b"\x00")
+        model = tmp_path / "m.bin"
+        model.write_bytes(b"\x00")
+        mocker.patch(
+            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0)
+        )
+        mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
+        rw = mocker.patch("asr_local.cli.run_whisper", return_value=[])
+        mocker.patch("asr_local.cli.save_transcript", return_value=None)
+
+        cli.main([str(audio), "--timeout", "42"])
+        assert rw.call_args.kwargs.get("timeout") == 42.0
 
     def test_whisper_error_exits_with_clean_message(
         self, tmp_path: Path, mocker, capsys

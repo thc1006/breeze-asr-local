@@ -107,9 +107,14 @@ def run_whisper(
 ) -> list[TimestampedSegment]:
     """Transcribe `wav_path` with `model_path` via whisper-cli subprocess.
 
-    `audio_ctx` caps the encoder attention window in mel frames (50 Hz).
-    0 = full 30 s context (default, required for long audio >=30 s).
-    512 = ~10 s context (3× faster on short clips, safe if clip <10 s).
+    `audio_ctx` caps the encoder attention window in mel frames. Whisper's
+    mel spectrogram runs at 100 fps (hop_length=160 @ 16 kHz), so each
+    frame covers 0.01 s of audio.
+      0    = full 30 s context (required when clip length >= ~29 s).
+      3000 = same as 0 (whisper's native ceiling).
+      640  = 6.4 s context (safe for clips up to 6.4 s).
+    Any audio past `audio_ctx / 100` seconds is silently truncated.
+    See `asr_local.cli.choose_audio_ctx` for a safe auto-tuner.
     """
     if binary_path is not None:
         binary = Path(binary_path)
