@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+
+# Build artifacts
+bin/
+whisper.cpp/
+*.dll
+*.exe
+*.lib
+*.obj
+
+# Model cache (pulled from HF on demand)
+models/
+.cache/
+
+# Generated transcripts (user content)
+*.transcript.txt
+1woman.transcript.txt
+
+# Local test samples (user-provided private audio)
+1woman.m4a
+samples/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

@@ -1,0 +1,51 @@
+[project]
+name = "breeze-asr-local"
+version = "0.1.0"
+description = "Local Taiwanese Mandarin ASR on Windows ARM64 (Snapdragon X Copilot+ PCs) — MediaTek Breeze-ASR-25 via native whisper.cpp"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "thc1006" }]
+keywords = ["asr", "speech-to-text", "whisper", "breeze-asr-25", "taiwanese-mandarin", "snapdragon", "arm64", "copilot-plus", "windows-on-arm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "huggingface-hub>=0.24",
+    "soundfile>=0.12",
+    "imageio-ffmpeg>=0.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/thc1006/breeze-asr-local"
+Repository = "https://github.com/thc1006/breeze-asr-local"
+Issues = "https://github.com/thc1006/breeze-asr-local/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-mock>=3.12",
+    "jiwer>=3.0",
+    "numpy>=1.26",
+]
+
+[project.scripts]
+asr-local = "asr_local.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra -q"
+filterwarnings = ["ignore::DeprecationWarning"]
