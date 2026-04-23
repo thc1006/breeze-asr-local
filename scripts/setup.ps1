@@ -30,8 +30,14 @@ Set-Location $ProjectRoot
 # Step 1 — architecture sanity check
 # ---------------------------------------------------------------------------
 Write-Step "Checking platform"
-if ($env:PROCESSOR_ARCHITECTURE -ne "ARM64") {
-    Write-Err "This script targets Windows ARM64 (PROCESSOR_ARCHITECTURE=ARM64). Current: $env:PROCESSOR_ARCHITECTURE"
+# PROCESSOR_ARCHITECTURE reports AMD64 when an x64 process (e.g. an x64 pwsh)
+# runs on ARM64 hardware; PROCESSOR_ARCHITEW6432 reveals the real host arch.
+$hostArch = $env:PROCESSOR_ARCHITECTURE
+if ($hostArch -ne "ARM64" -and $env:PROCESSOR_ARCHITEW6432 -eq "ARM64") {
+    $hostArch = "ARM64"
+}
+if ($hostArch -ne "ARM64") {
+    Write-Err "This script targets Windows ARM64. Detected host: $hostArch"
     Write-Err "The native build only makes sense on Snapdragon X / ARM64 hardware."
     exit 1
 }
@@ -64,7 +70,7 @@ $vsInst = "C:\Program Files (x86)\Microsoft Visual Studio\Installer"
 $vsRoot = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools"
 $vcvars = Join-Path $vsRoot "VC\Auxiliary\Build\vcvarsall.bat"
 $arm64CL = Get-ChildItem "$vsRoot\VC\Tools\MSVC\*\bin\Hostarm64\arm64\cl.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-$arm64Lib = Get-ChildItem "$vsRoot\VC\Tools\MSVC\*\lib\arm64\msvcrtd.lib" -ErrorAction SilentlyContinue | Select-Object -First 1
+$arm64Lib = Get-ChildItem "$vsRoot\VC\Tools\MSVC\*\lib\arm64\msvcrt.lib" -ErrorAction SilentlyContinue | Select-Object -First 1
 $libomp  = Get-ChildItem "$vsRoot\VC\Redist\MSVC\*\debug_nonredist\arm64\Microsoft.VC143.OpenMP.LLVM\libomp140.aarch64.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
 
 if (-not $arm64CL -or -not $arm64Lib -or -not $libomp) {
@@ -139,11 +145,15 @@ Remove-Item -Recurse -Force $build -ErrorAction SilentlyContinue
 # Prepend toolchain dirs so cmake + vcvarsall can find vswhere + cmake + ninja + clang.
 $env:Path = "$vsInst;$llvmBin;$(Split-Path $cmake);$(Split-Path $ninja);$env:Path"
 
+# OpenMP stays ON: the pthread fallback is ~35x slower on whisper-large-v2 Q8_0
+# on Snapdragon X (measured). The build links libomp140.aarch64.dll, which
+# requires the separate license notice shown below at staging time.
 $configureCmd = "`"$vcvars`" arm64 > nul && cmake -S `"$src`" -B `"$build`" -G Ninja " +
                 "-DCMAKE_BUILD_TYPE=Release " +
                 "-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ " +
                 "-DCMAKE_RC_COMPILER=llvm-rc " +
-                "-DGGML_NATIVE=ON -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON"
+                "-DGGML_NATIVE=ON " +
+                "-DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON"
 $exit = (Start-Process -NoNewWindow -Wait -FilePath cmd.exe -ArgumentList "/c", $configureCmd -PassThru).ExitCode
 if ($exit -ne 0) { Write-Err "cmake configure failed (exit $exit)"; exit $exit }
 
@@ -163,13 +173,19 @@ New-Item -ItemType Directory -Path $dest -Force | Out-Null
 Copy-Item "$build\bin\whisper-cli.exe" -Destination $dest -Force
 Copy-Item "$build\bin\*.dll"           -Destination $dest -Force
 
-# VC Redist ARM64 runtime (required by clang-built binaries on ARM64)
+# VC Redist ARM64 runtime (redistributable MSVC CRT).
 $redist = "$vsRoot\VC\Redist\MSVC"
 $redistArm64 = Get-ChildItem "$redist\*\arm64\Microsoft.VC143.CRT" -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($redistArm64) {
     Copy-Item "$($redistArm64.FullName)\*.dll" -Destination $dest -Force
 }
+
+# libomp140.aarch64.dll: the LLVM OpenMP runtime. It lives under the VS Redist
+# `debug_nonredist` tree, meaning the MSVC license forbids redistributing it
+# outside its licensed development machine. Copying it into bin/ on the host
+# that owns the VS install is fine. Do NOT zip bin/ and share it externally.
 Copy-Item $libomp.FullName -Destination $dest -Force
+Write-Warn2 "Staged libomp140.aarch64.dll from VS Redist debug_nonredist/ — DO NOT redistribute bin/ externally (Microsoft license restriction). Personal / on-device use only."
 
 Write-Ok "Staged at: $dest"
 Get-ChildItem $dest | Select-Object Name, Length | Format-Table -AutoSize

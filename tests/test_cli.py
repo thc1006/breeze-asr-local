@@ -11,22 +11,45 @@ from asr_local.segment import TimestampedSegment
 
 
 class TestChooseAudioCtx:
-    def test_short_clip_uses_small_context(self) -> None:
-        assert choose_audio_ctx(5.8) == 512
+    """-ac value must cover the whole clip. whisper mel rate is 100 fps."""
 
-    def test_medium_clip_uses_mid_context(self) -> None:
-        assert choose_audio_ctx(15.0) == 1024
-
-    def test_long_clip_uses_full_context(self) -> None:
-        assert choose_audio_ctx(45.0) == 0
-
-    def test_boundary_ten_seconds(self) -> None:
-        assert choose_audio_ctx(9.999) == 512
-        assert choose_audio_ctx(10.0) == 1024
-
-    def test_boundary_thirty_seconds(self) -> None:
-        assert choose_audio_ctx(29.999) == 1024
+    def test_long_clip_returns_full_context(self) -> None:
+        # 30 s or more needs full context (3000 frames).
         assert choose_audio_ctx(30.0) == 0
+        assert choose_audio_ctx(45.0) == 0
+        assert choose_audio_ctx(120.0) == 0
+
+    def test_returned_value_covers_duration(self) -> None:
+        # Invariant: ac / 100 fps must be >= duration for every short clip,
+        # otherwise the encoder silently truncates the audio tail.
+        for dur in [0.5, 1.0, 2.5, 5.0, 5.8, 7.3, 9.9, 15.0, 25.0, 29.9]:
+            ac = choose_audio_ctx(dur)
+            if ac == 0:
+                continue  # full 30 s is always enough
+            covered_s = ac / 100.0
+            assert covered_s >= dur, (
+                f"duration {dur}s > covered {covered_s}s (ac={ac})"
+            )
+
+    def test_output_is_multiple_of_64(self) -> None:
+        # SIMD alignment: whisper encoder kernels want 64-aligned seq lens.
+        for dur in [0.5, 5.8, 15.0, 25.0]:
+            ac = choose_audio_ctx(dur)
+            assert ac == 0 or ac % 64 == 0
+
+    def test_5s_clip_regression(self) -> None:
+        # Previous buggy code returned 512 (5.12 s cap). Must be > 580 frames.
+        assert choose_audio_ctx(5.8) >= 580
+
+    def test_zero_duration_returns_small_nonzero(self) -> None:
+        # Pathological: 0 s should still return a valid small ac.
+        ac = choose_audio_ctx(0.0)
+        assert ac > 0 and ac < 3000
+
+    def test_negative_duration_raises(self) -> None:
+        import pytest as _pt
+        with _pt.raises(ValueError):
+            choose_audio_ctx(-1.0)
 
 
 class TestParseArgs:
@@ -113,6 +136,47 @@ class TestMain:
 
         rc = cli.main([str(audio)])
         assert rc == 2
+
+    def test_audio_conversion_error_exits_with_clean_message(
+        self, tmp_path: Path, mocker, capsys
+    ) -> None:
+        from asr_local.audio import AudioConversionError
+
+        audio = tmp_path / "bad.wav"
+        audio.write_bytes(b"\x00")
+        mocker.patch(
+            "asr_local.cli.convert_to_16k_mono_wav",
+            side_effect=AudioConversionError("ffmpeg: invalid stream"),
+        )
+        rc = cli.main([str(audio)])
+        assert rc == 3
+        err = capsys.readouterr().err
+        assert "audio conversion failed" in err
+        assert "invalid stream" in err
+
+    def test_whisper_error_exits_with_clean_message(
+        self, tmp_path: Path, mocker, capsys
+    ) -> None:
+        from asr_local.transcriber import WhisperCliError
+
+        audio = tmp_path / "a.wav"
+        audio.write_bytes(b"\x00")
+        wav = tmp_path / "converted.wav"
+        wav.write_bytes(b"\x00")
+        model = tmp_path / "m.bin"
+        model.write_bytes(b"\x00")
+        mocker.patch(
+            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0)
+        )
+        mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
+        mocker.patch(
+            "asr_local.cli.run_whisper",
+            side_effect=WhisperCliError("model load failed"),
+        )
+        rc = cli.main([str(audio)])
+        assert rc == 4
+        err = capsys.readouterr().err
+        assert "whisper-cli failed" in err
 
     def test_quant_flag_forwarded_to_ensure_ggml(
         self, tmp_path: Path, mocker

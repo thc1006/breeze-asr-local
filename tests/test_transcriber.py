@@ -13,6 +13,7 @@ from asr_local.transcriber import (
     WhisperCliNotFoundError,
     _build_command,
     _parse_json_output,
+    resolve_default_binary,
     run_whisper,
 )
 
@@ -192,3 +193,56 @@ class TestRunWhisperOrchestration:
         segments = run_whisper(wav_path=wav, model_path=model, binary_path=binary)
         assert len(segments) == 2
         assert segments[0].text == "你好,歡迎收聽本節目。"
+
+    def test_timeout_wrapped_as_whisper_cli_error(
+        self, tmp_path: Path, mocker
+    ) -> None:
+        wav = tmp_path / "x.wav"
+        model = tmp_path / "m.bin"
+        binary = tmp_path / "whisper-cli.exe"
+        for p in (wav, model, binary):
+            p.touch()
+        mocker.patch(
+            "asr_local.transcriber.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="whisper-cli", timeout=5),
+        )
+        with pytest.raises(WhisperCliError, match="timed out"):
+            run_whisper(
+                wav_path=wav, model_path=model, binary_path=binary, timeout=5
+            )
+
+
+class TestResolveDefaultBinary:
+    """Lazy resolution lets the first post-build call pick up the new binary."""
+
+    def test_raises_when_neither_binary_exists(self, tmp_path: Path, mocker) -> None:
+        mocker.patch(
+            "asr_local.transcriber._NATIVE_ARM64", tmp_path / "never" / "whisper-cli.exe"
+        )
+        mocker.patch(
+            "asr_local.transcriber._PRISM_X64", tmp_path / "nope" / "whisper-cli.exe"
+        )
+        with pytest.raises(WhisperCliNotFoundError):
+            resolve_default_binary()
+
+    def test_prefers_native_over_prism(self, tmp_path: Path, mocker) -> None:
+        native = tmp_path / "native-arm64" / "whisper-cli.exe"
+        prism = tmp_path / "Release" / "whisper-cli.exe"
+        native.parent.mkdir(parents=True)
+        prism.parent.mkdir(parents=True)
+        native.touch()
+        prism.touch()
+        mocker.patch("asr_local.transcriber._NATIVE_ARM64", native)
+        mocker.patch("asr_local.transcriber._PRISM_X64", prism)
+        assert resolve_default_binary() == native
+
+    def test_falls_back_to_prism_when_native_missing(
+        self, tmp_path: Path, mocker
+    ) -> None:
+        native = tmp_path / "native-arm64" / "whisper-cli.exe"  # absent
+        prism = tmp_path / "Release" / "whisper-cli.exe"
+        prism.parent.mkdir(parents=True)
+        prism.touch()
+        mocker.patch("asr_local.transcriber._NATIVE_ARM64", native)
+        mocker.patch("asr_local.transcriber._PRISM_X64", prism)
+        assert resolve_default_binary() == prism

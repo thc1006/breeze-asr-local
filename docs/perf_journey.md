@@ -106,10 +106,12 @@ The tooling cascade that has to click together:
 
 4. **Runtime DLL set** to ship alongside `whisper-cli.exe`:
    - From build output: `whisper.dll`, `ggml.dll`, `ggml-base.dll`, `ggml-cpu.dll`
-   - From VC Redist ARM64: `vcruntime140.dll`, `vcruntime140_1.dll`, `vcruntime140_threads.dll`, `msvcp140.dll`, `msvcp140_1.dll`, `msvcp140_2.dll`, `msvcp140_atomic_wait.dll`, `msvcp140_codecvt_ids.dll`, `vccorlib140.dll`, `concrt140.dll`
-   - From VC Redist `debug_nonredist/arm64/Microsoft.VC143.OpenMP.LLVM/`: **`libomp140.aarch64.dll`** (the kicker — without it the binary dies with STATUS_DLL_NOT_FOUND before printing anything)
+   - From VC Redist ARM64 (redistributable): `vcruntime140.dll`, `vcruntime140_1.dll`, `vcruntime140_threads.dll`, `msvcp140.dll`, `msvcp140_1.dll`, `msvcp140_2.dll`, `msvcp140_atomic_wait.dll`, `msvcp140_codecvt_ids.dll`, `vccorlib140.dll`, `concrt140.dll`
+   - From VC Redist `debug_nonredist/arm64/Microsoft.VC143.OpenMP.LLVM/`: **`libomp140.aarch64.dll`**
 
-Missing any of these → immediate `-1073741515` on launch.
+Missing any of these → immediate `-1073741515` (STATUS_DLL_NOT_FOUND) on launch.
+
+**The libomp140 trade-off**: `GGML_OPENMP=ON` pulls a hard dependency on `libomp140.aarch64.dll`, which ships only under VS Redist's `debug_nonredist` tree. Microsoft's license marks that tree as *not redistributable* — you may use it on the development machine but not bundle and ship it. We measured what happens with `GGML_OPENMP=OFF` (ggml falling back to its own pthread threadpool): RTF goes from 1.4× to ~55× on the 5.8 s golden clip — **35× slower**, not "negligible". OpenMP is load-bearing for whisper.cpp on this CPU. The setup script therefore copies libomp140.aarch64.dll into `bin/native-arm64/` and prints a warning that `bin/` must not be externally redistributed.
 
 ## 6. Configure-time SIMD detection (good news)
 

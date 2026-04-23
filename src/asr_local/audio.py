@@ -43,7 +43,12 @@ def convert_to_16k_mono_wav(src_path: Path | str) -> tuple[Path, float]:
         str(out_path),
     ]
 
-    result = subprocess.run(cmd, capture_output=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=300)
+    except subprocess.TimeoutExpired as e:
+        out_path.unlink(missing_ok=True)
+        raise AudioConversionError(f"ffmpeg timed out after 300s on {src}") from e
+
     if result.returncode != 0:
         out_path.unlink(missing_ok=True)
         stderr = (result.stderr or b"").decode("utf-8", errors="replace").strip()

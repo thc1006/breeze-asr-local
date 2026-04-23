@@ -162,6 +162,17 @@ uv run pytest --run-slow       # + 真實 Breeze 模型下載 + 轉錄 (需 ~2 �
 
 ---
 
+## Repo layout reference
+
+- `src/asr_local/` — the real pipeline (what you want to run)
+- `tests/` — 75 pytest tests (74 unit + 1 slow integration)
+- `scripts/setup.ps1` — one-shot toolchain install + whisper.cpp native build
+- `docs/perf_journey.md` — full write-up of the 13.7× → 1.4× optimization
+- `notebooks/colab_original.py` — original Colab-GPU pipeline, kept for reference only
+- `bin/native-arm64/` — *generated* by setup.ps1, gitignored; `whisper-cli.exe` lives here
+
+---
+
 ## Credits
 
 上游 / Upstream:

@@ -11,10 +11,6 @@ from .segment import TimestampedSegment
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _NATIVE_ARM64 = _PROJECT_ROOT / "bin" / "native-arm64" / "whisper-cli.exe"
 _PRISM_X64 = _PROJECT_ROOT / "bin" / "Release" / "whisper-cli.exe"
-# Prefer native ARM64 build (NEON + dotprod + i8mm — ~10× faster than x64-Prism
-# for large-v2 Q8_0 on Snapdragon X). Fall back to the prebuilt x64 binary
-# under Windows Prism emulation if native wasn't compiled.
-DEFAULT_WHISPER_CLI = _NATIVE_ARM64 if _NATIVE_ARM64.exists() else _PRISM_X64
 
 
 class WhisperCliError(RuntimeError):
@@ -23,6 +19,28 @@ class WhisperCliError(RuntimeError):
 
 class WhisperCliNotFoundError(WhisperCliError):
     """whisper-cli binary could not be located at the given path."""
+
+
+def resolve_default_binary() -> Path:
+    """Return the best whisper-cli binary available locally.
+
+    Prefers the native ARM64 build (produced by scripts/setup.ps1, NEON +
+    dotprod + i8mm, ~10x faster on Snapdragon X). Falls back to a prebuilt
+    x64 binary at bin/Release/ running under Windows Prism emulation if the
+    native build is absent. Raises WhisperCliNotFoundError if neither exists.
+
+    Resolved lazily so that builds completed after module import are picked
+    up on the next call.
+    """
+    if _NATIVE_ARM64.exists():
+        return _NATIVE_ARM64
+    if _PRISM_X64.exists():
+        return _PRISM_X64
+    raise WhisperCliNotFoundError(
+        "No whisper-cli binary found. Run 'scripts\\setup.ps1' to build the "
+        f"native ARM64 binary at {_NATIVE_ARM64}, or unzip whisper-bin-x64.zip "
+        f"from the whisper.cpp release at {_PRISM_X64.parent} for Prism fallback."
+    )
 
 
 def _build_command(
@@ -93,9 +111,12 @@ def run_whisper(
     0 = full 30 s context (default, required for long audio >=30 s).
     512 = ~10 s context (3× faster on short clips, safe if clip <10 s).
     """
-    binary = Path(binary_path) if binary_path else DEFAULT_WHISPER_CLI
-    if not binary.exists():
-        raise WhisperCliNotFoundError(f"whisper-cli binary not found: {binary}")
+    if binary_path is not None:
+        binary = Path(binary_path)
+        if not binary.exists():
+            raise WhisperCliNotFoundError(f"whisper-cli binary not found: {binary}")
+    else:
+        binary = resolve_default_binary()
 
     with tempfile.TemporaryDirectory(prefix="asr_local_out_") as td:
         out_prefix = Path(td) / "transcribe"
@@ -108,7 +129,13 @@ def run_whisper(
             output_prefix=out_prefix,
             audio_ctx=audio_ctx,
         )
-        result = subprocess.run(cmd, capture_output=True, timeout=timeout)
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            raise WhisperCliError(
+                f"whisper-cli timed out after {timeout}s"
+            ) from e
+
         if result.returncode != 0:
             stderr = (result.stderr or b"").decode("utf-8", errors="replace").strip()
             raise WhisperCliError(

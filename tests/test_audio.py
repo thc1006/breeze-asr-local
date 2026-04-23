@@ -59,6 +59,20 @@ class TestConvertErrors:
         with pytest.raises(AudioConversionError):
             convert_to_16k_mono_wav(bogus)
 
+    def test_ffmpeg_timeout_surfaces_as_conversion_error(
+        self, tmp_path: Path, mocker
+    ) -> None:
+        import subprocess as sp
+
+        src = tmp_path / "a.wav"
+        src.write_bytes(b"\x00")  # existence check only
+        mocker.patch(
+            "asr_local.audio.subprocess.run",
+            side_effect=sp.TimeoutExpired(cmd="ffmpeg", timeout=300),
+        )
+        with pytest.raises(AudioConversionError, match="timed out"):
+            convert_to_16k_mono_wav(src)
+
 
 class TestConvertRealM4a:
     """Integration test against the user's real m4a clip."""
