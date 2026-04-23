@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import sys
 import time
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Sequence
 from .audio import AudioConversionError, convert_to_16k_mono_wav
 from .model import GgmlValidationError, VARIANT_FILES, ensure_ggml
 from .transcriber import WhisperCliError, run_whisper
+from .vad import ensure_vad_model
 from .writer import save_transcript
 
 # whisper mel spectrogram runs at hop_length=160 over 16 kHz input => 100 fps.
@@ -20,6 +22,54 @@ from .writer import save_transcript
 _MEL_FPS = 100
 _FULL_CTX_FRAMES = 3000
 _SAFETY_PAD_FRAMES = 64
+
+# whisper.cpp's flash-attention kernel (`-fa` default ON in v1.8.4) loses
+# output quality on CJK scripts (whisper.cpp issue #3020). For Breeze-ASR-25
+# Q8_0 on Mandarin this is also ~15% *slower* than the non-FA path on
+# Snapdragon X, so disabling it is a pure win.
+_CJK_LANGUAGES = frozenset({"zh", "ja", "ko"})
+
+
+def choose_flash_attn(language: str) -> bool:
+    """Whether whisper.cpp should use flash attention for this language.
+
+    Returns False for CJK (zh / ja / ko) where flash-attn degrades accuracy.
+    Returns True otherwise, matching whisper.cpp's own default.
+    """
+    return language.lower() not in _CJK_LANGUAGES
+
+
+_PARALLEL_MIN_DURATION_S = 30.0
+
+# Silero VAD adds ~1 ms/30 s overhead and catches silence that otherwise burns
+# encoder compute. For short clips there is rarely enough silence to matter,
+# but for anything >= 30 s the net is almost always a win.
+_VAD_AUTO_MIN_DURATION_S = 30.0
+
+
+def choose_vad(duration_s: float) -> bool:
+    """Auto-enable VAD for audio long enough to contain meaningful silence."""
+    return duration_s >= _VAD_AUTO_MIN_DURATION_S
+
+
+def choose_processors(duration_s: float, cpu_count: int) -> tuple[int, int]:
+    """Pick (`-p N`, `-t M`) given clip duration and available cores.
+
+    For audio under 30 s, chunk-parallel adds overhead without payoff —
+    use a single processor with all threads. For longer audio, 2 parallel
+    decoders each using half the cores typically beat a single decoder
+    using all cores by ~25% on 8-core Oryon (measured). The invariant
+    `p * t <= cpu_count` is always maintained so we don't oversubscribe.
+    """
+    if duration_s < 0:
+        raise ValueError(f"duration_s must be non-negative, got {duration_s}")
+    if cpu_count < 1:
+        cpu_count = 1
+    if duration_s < _PARALLEL_MIN_DURATION_S or cpu_count < 4:
+        return (1, cpu_count)
+    # Longer audio + >=4 cores: split into two parallel decoders.
+    threads = max(1, cpu_count // 2)
+    return (2, threads)
 
 
 def choose_audio_ctx(duration_s: float) -> int:
@@ -52,7 +102,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default="q8_0",
         help="GGML quantization variant (default: q8_0)",
     )
-    parser.add_argument("--threads", type=int, default=8, help="whisper-cli thread count")
+    parser.add_argument(
+        "--threads",
+        type=int,
+        default=None,
+        help="Per-processor thread count (auto-tuned from duration if unset)",
+    )
+    parser.add_argument(
+        "--processors",
+        type=int,
+        default=None,
+        help="Parallel chunk processors -p (auto: 1 for <30s, 2 for >=30s)",
+    )
     parser.add_argument("--language", default="zh", help="Source language (default: zh)")
     parser.add_argument(
         "--timeout",
@@ -65,6 +126,24 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=int,
         default=None,
         help="Encoder context in mel frames (auto-tuned from duration if unset; 0=full 30 s)",
+    )
+    parser.add_argument(
+        "--flash-attn",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Force flash-attention on/off (auto: off for CJK, on otherwise)",
+    )
+    parser.add_argument(
+        "--vad",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Force Silero VAD on/off (auto: on for audio >= 30 s)",
+    )
+    parser.add_argument(
+        "--priority",
+        choices=("normal", "high"),
+        default="normal",
+        help="Set whisper-cli process priority (Windows). 'high' gains 1-3%% under load.",
     )
     parser.add_argument(
         "--output",
@@ -95,17 +174,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"      -> {model_path.name} ({model_path.stat().st_size / 1e9:.2f} GB)")
 
         audio_ctx = args.audio_ctx if args.audio_ctx is not None else choose_audio_ctx(duration)
+        flash_attn = (
+            args.flash_attn if args.flash_attn is not None else choose_flash_attn(args.language)
+        )
+        cpu_count = os.cpu_count() or 8
+        auto_p, auto_t = choose_processors(duration, cpu_count)
+        processors = args.processors if args.processors is not None else auto_p
+        threads = args.threads if args.threads is not None else auto_t
+        use_vad = args.vad if args.vad is not None else choose_vad(duration)
+        vad_model_path = ensure_vad_model() if use_vad else None
         print(
-            f"[3/4] Transcribing with {args.threads} threads "
-            f"(language={args.language}, audio_ctx={audio_ctx or 'full'})"
+            f"[3/4] Transcribing (-p {processors} -t {threads}, "
+            f"language={args.language}, audio_ctx={audio_ctx or 'full'}, "
+            f"flash_attn={'on' if flash_attn else 'off'}, "
+            f"vad={'on' if use_vad else 'off'})"
         )
         t0 = time.perf_counter()
         segments = run_whisper(
             wav_path=wav_path,
             model_path=model_path,
             language=args.language,
-            threads=args.threads,
+            threads=threads,
+            processors=processors,
             audio_ctx=audio_ctx,
+            flash_attn=flash_attn,
+            vad_model_path=vad_model_path,
+            priority=args.priority,
             timeout=args.timeout,
         )
         elapsed = time.perf_counter() - t0

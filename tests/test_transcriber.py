@@ -134,6 +134,130 @@ class TestBuildCommand:
         i = cmd.index("-ac")
         assert cmd[i + 1] == "512"
 
+    def test_flash_attn_default_true_omits_nfa(self, tmp_path: Path) -> None:
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="en",
+            threads=1,
+            output_prefix=tmp_path / "o",
+            flash_attn=True,
+        )
+        assert "-nfa" not in cmd
+
+    def test_flash_attn_false_adds_nfa(self, tmp_path: Path) -> None:
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="zh",
+            threads=1,
+            output_prefix=tmp_path / "o",
+            flash_attn=False,
+        )
+        assert "-nfa" in cmd
+
+    def test_processors_default_omits_flag(self, tmp_path: Path) -> None:
+        # whisper-cli default is -p 1; only emit -p when explicitly > 1.
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="zh",
+            threads=4,
+            output_prefix=tmp_path / "o",
+            processors=1,
+        )
+        assert "-p" not in cmd
+
+    def test_processors_two_emits_flag(self, tmp_path: Path) -> None:
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="zh",
+            threads=4,
+            output_prefix=tmp_path / "o",
+            processors=2,
+        )
+        i = cmd.index("-p")
+        assert cmd[i + 1] == "2"
+
+    def test_vad_default_none_omits_flag(self, tmp_path: Path) -> None:
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="zh",
+            threads=1,
+            output_prefix=tmp_path / "o",
+        )
+        assert "--vad" not in cmd
+        assert "-vm" not in cmd
+
+    def test_vad_model_path_adds_flags(self, tmp_path: Path) -> None:
+        vad = tmp_path / "silero.bin"
+        vad.touch()
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="zh",
+            threads=1,
+            output_prefix=tmp_path / "o",
+            vad_model_path=vad,
+        )
+        assert "--vad" in cmd
+        i = cmd.index("-vm")
+        assert cmd[i + 1] == str(vad)
+
+
+class TestRunWhisperPriority:
+    def test_default_priority_passes_zero_creationflags(
+        self, tmp_path: Path, mocker
+    ) -> None:
+        wav = tmp_path / "x.wav"
+        model = tmp_path / "m.bin"
+        binary = tmp_path / "whisper-cli.exe"
+        for p in (wav, model, binary):
+            p.touch()
+
+        def fake_run(cmd, **kwargs):
+            out_prefix = Path(cmd[cmd.index("-of") + 1])
+            out_prefix.with_suffix(".json").write_text(
+                (FIXTURES / "sample_output.json").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
+
+        run = mocker.patch("asr_local.transcriber.subprocess.run", side_effect=fake_run)
+        run_whisper(wav_path=wav, model_path=model, binary_path=binary)
+        assert run.call_args.kwargs.get("creationflags") == 0
+
+    def test_high_priority_sets_high_priority_class(
+        self, tmp_path: Path, mocker
+    ) -> None:
+        wav = tmp_path / "x.wav"
+        model = tmp_path / "m.bin"
+        binary = tmp_path / "whisper-cli.exe"
+        for p in (wav, model, binary):
+            p.touch()
+
+        def fake_run(cmd, **kwargs):
+            out_prefix = Path(cmd[cmd.index("-of") + 1])
+            out_prefix.with_suffix(".json").write_text(
+                (FIXTURES / "sample_output.json").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
+
+        run = mocker.patch("asr_local.transcriber.subprocess.run", side_effect=fake_run)
+        run_whisper(
+            wav_path=wav, model_path=model, binary_path=binary, priority="high"
+        )
+        assert run.call_args.kwargs.get("creationflags") == 0x00000080
+
 
 class TestRunWhisperOrchestration:
     """Subprocess mocked — we test orchestration, error routing, output file handling."""

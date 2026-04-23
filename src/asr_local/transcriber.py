@@ -12,6 +12,15 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _NATIVE_ARM64 = _PROJECT_ROOT / "bin" / "native-arm64" / "whisper-cli.exe"
 _PRISM_X64 = _PROJECT_ROOT / "bin" / "Release" / "whisper-cli.exe"
 
+# Windows process priority constants. `subprocess.HIGH_PRIORITY_CLASS` is
+# available on Windows Python but referencing it by name is fragile on
+# non-Windows test hosts, so we hardcode the values for portability. These
+# are no-ops when the OS doesn't honor them.
+_PRIORITY_FLAGS: dict[str, int] = {
+    "normal": 0,
+    "high": 0x00000080,  # HIGH_PRIORITY_CLASS
+}
+
 
 class WhisperCliError(RuntimeError):
     """whisper-cli exited non-zero, produced malformed output, or similar."""
@@ -52,6 +61,9 @@ def _build_command(
     threads: int,
     output_prefix: Path,
     audio_ctx: int = 0,
+    flash_attn: bool = True,
+    processors: int = 1,
+    vad_model_path: Path | None = None,
 ) -> list[str]:
     cmd = [
         str(binary_path),
@@ -65,6 +77,12 @@ def _build_command(
     ]
     if audio_ctx > 0:
         cmd += ["-ac", str(audio_ctx)]
+    if not flash_attn:
+        cmd += ["-nfa"]
+    if processors > 1:
+        cmd += ["-p", str(processors)]
+    if vad_model_path is not None:
+        cmd += ["--vad", "-vm", str(vad_model_path)]
     return cmd
 
 
@@ -101,7 +119,11 @@ def run_whisper(
     model_path: Path,
     language: str = "zh",
     threads: int = 8,
+    processors: int = 1,
     audio_ctx: int = 0,
+    flash_attn: bool = True,
+    vad_model_path: Path | None = None,
+    priority: str = "normal",
     binary_path: Path | None = None,
     timeout: float | None = None,
 ) -> list[TimestampedSegment]:
@@ -133,9 +155,15 @@ def run_whisper(
             threads=threads,
             output_prefix=out_prefix,
             audio_ctx=audio_ctx,
+            flash_attn=flash_attn,
+            processors=processors,
+            vad_model_path=vad_model_path,
         )
+        flags = _PRIORITY_FLAGS.get(priority, 0)
         try:
-            result = subprocess.run(cmd, capture_output=True, timeout=timeout)
+            result = subprocess.run(
+                cmd, capture_output=True, timeout=timeout, creationflags=flags
+            )
         except subprocess.TimeoutExpired as e:
             raise WhisperCliError(
                 f"whisper-cli timed out after {timeout}s"

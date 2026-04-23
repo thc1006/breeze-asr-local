@@ -148,11 +148,15 @@ $env:Path = "$vsInst;$llvmBin;$(Split-Path $cmake);$(Split-Path $ninja);$env:Pat
 # OpenMP stays ON: the pthread fallback is ~35x slower on whisper-large-v2 Q8_0
 # on Snapdragon X (measured). The build links libomp140.aarch64.dll, which
 # requires the separate license notice shown below at staging time.
+# LTO (CMAKE_INTERPROCEDURAL_OPTIMIZATION) picks up 2-6 % extra on ggml glue
+# code. Kernels are already NEON intrinsics so most of the hot path is
+# already inlined; the win is in surrounding dispatch code.
 $configureCmd = "`"$vcvars`" arm64 > nul && cmake -S `"$src`" -B `"$build`" -G Ninja " +
                 "-DCMAKE_BUILD_TYPE=Release " +
                 "-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ " +
                 "-DCMAKE_RC_COMPILER=llvm-rc " +
                 "-DGGML_NATIVE=ON " +
+                "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON " +
                 "-DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON"
 $exit = (Start-Process -NoNewWindow -Wait -FilePath cmd.exe -ArgumentList "/c", $configureCmd -PassThru).ExitCode
 if ($exit -ne 0) { Write-Err "cmake configure failed (exit $exit)"; exit $exit }

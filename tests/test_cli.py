@@ -6,8 +6,89 @@ from pathlib import Path
 import pytest
 
 from asr_local import cli
-from asr_local.cli import choose_audio_ctx
+from asr_local.cli import (
+    choose_audio_ctx,
+    choose_flash_attn,
+    choose_processors,
+    choose_vad,
+)
 from asr_local.segment import TimestampedSegment
+
+
+class TestChooseVad:
+    def test_short_clip_disables_vad(self) -> None:
+        # VAD overhead (~1ms/30s) doesn't pay off on a 5-second clip.
+        assert choose_vad(5.8) is False
+
+    def test_boundary_30s_enables_vad(self) -> None:
+        assert choose_vad(29.999) is False
+        assert choose_vad(30.0) is True
+
+    def test_long_clip_enables_vad(self) -> None:
+        assert choose_vad(300.0) is True
+        assert choose_vad(3600.0) is True
+
+
+class TestChooseProcessors:
+    """(p, t) split must satisfy p*t <= cpu_count and favour parallelism
+    for long audio where chunk-parallel overlap actually helps."""
+
+    def test_short_clip_is_single_processor_all_threads(self) -> None:
+        # < 30 s: no point spawning a second chunk-processor.
+        p, t = choose_processors(5.8, cpu_count=8)
+        assert p == 1 and t == 8
+
+    def test_long_clip_uses_two_processors(self) -> None:
+        # >= 30 s: 2x4 beat 1x8 by ~25% (measured on 57.6 s clip).
+        p, t = choose_processors(57.6, cpu_count=8)
+        assert p == 2 and t == 4
+
+    def test_very_short_cpu_count_degrades_gracefully(self) -> None:
+        # 4-core machine: can't do 2x4; stay sequential.
+        p, t = choose_processors(60.0, cpu_count=4)
+        assert p * t <= 4
+        assert p >= 1 and t >= 1
+
+    @pytest.mark.parametrize(
+        "duration,cpu",
+        [(5.0, 8), (15.0, 8), (30.0, 8), (60.0, 8), (60.0, 12), (300.0, 8)],
+    )
+    def test_product_never_exceeds_cpu_count(self, duration: float, cpu: int) -> None:
+        p, t = choose_processors(duration, cpu_count=cpu)
+        assert p * t <= cpu
+
+    def test_minimum_threads_is_one(self) -> None:
+        p, t = choose_processors(60.0, cpu_count=2)
+        assert t >= 1 and p >= 1
+
+    def test_boundary_exactly_30_seconds(self) -> None:
+        # 30 s is the point where parallel chunks become worthwhile.
+        p_short, _ = choose_processors(29.999, cpu_count=8)
+        p_long, _ = choose_processors(30.0, cpu_count=8)
+        assert p_short == 1
+        assert p_long == 2
+
+    def test_negative_duration_raises(self) -> None:
+        with pytest.raises(ValueError):
+            choose_processors(-1.0, cpu_count=8)
+
+
+class TestChooseFlashAttn:
+    """Flash attention degrades CJK transcription quality and is also slower
+    for Mandarin on Snapdragon X (whisper.cpp issue #3020, empirically
+    confirmed 15% speedup for Breeze-ASR-25 Q8_0 with -nfa on zh)."""
+
+    @pytest.mark.parametrize("lang", ["zh", "ja", "ko"])
+    def test_cjk_disables_flash_attn(self, lang: str) -> None:
+        assert choose_flash_attn(lang) is False
+
+    @pytest.mark.parametrize("lang", ["en", "de", "fr", "es", "auto"])
+    def test_non_cjk_keeps_flash_attn(self, lang: str) -> None:
+        assert choose_flash_attn(lang) is True
+
+    def test_unknown_language_defaults_safe(self) -> None:
+        # Unknown / exotic language codes keep the whisper.cpp default (ON).
+        assert choose_flash_attn("zzzzz") is True
 
 
 class TestChooseAudioCtx:
@@ -76,9 +157,22 @@ class TestParseArgs:
         args = cli.parse_args([str(tmp_path / "a.wav")])
         assert args.language == "zh"
 
-    def test_default_threads_8(self, tmp_path: Path) -> None:
+    def test_default_threads_is_auto(self, tmp_path: Path) -> None:
+        # --threads default is None (auto-tuned via choose_processors).
         args = cli.parse_args([str(tmp_path / "a.wav")])
-        assert args.threads == 8
+        assert args.threads is None
+
+    def test_default_processors_is_auto(self, tmp_path: Path) -> None:
+        args = cli.parse_args([str(tmp_path / "a.wav")])
+        assert args.processors is None
+
+    def test_explicit_threads_override(self, tmp_path: Path) -> None:
+        args = cli.parse_args([str(tmp_path / "a.wav"), "--threads", "6"])
+        assert args.threads == 6
+
+    def test_explicit_processors_override(self, tmp_path: Path) -> None:
+        args = cli.parse_args([str(tmp_path / "a.wav"), "--processors", "4"])
+        assert args.processors == 4
 
     def test_custom_output(self, tmp_path: Path) -> None:
         out = tmp_path / "custom.txt"
@@ -110,6 +204,7 @@ class TestMain:
             return_value=(wav_out, 5.0),
         )
         mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
+        mocker.patch("asr_local.cli.ensure_vad_model", return_value=tmp_path / "vad.bin")
         mocker.patch(
             "asr_local.cli.run_whisper",
             return_value=[
@@ -295,6 +390,7 @@ class TestMain:
         model = tmp_path / "m"
         model.write_bytes(b"\x00")
         mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
+        mocker.patch("asr_local.cli.ensure_vad_model", return_value=tmp_path / "vad.bin")
         mocker.patch(
             "asr_local.cli.run_whisper",
             return_value=[TimestampedSegment(0, 1, "x")],
