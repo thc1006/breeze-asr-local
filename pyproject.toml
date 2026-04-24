@@ -1,5 +1,5 @@
 [project]
-name = "breeze-asr-local"
+name = "breeze-asr-snapdragon"
 version = "0.1.0"
 description = "Local Taiwanese Mandarin ASR on Windows ARM64 (Snapdragon X Copilot+ PCs) — MediaTek Breeze-ASR-25 via native whisper.cpp"
 readme = "README.md"
@@ -22,9 +22,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/thc1006/breeze-asr-local"
-Repository = "https://github.com/thc1006/breeze-asr-local"
-Issues = "https://github.com/thc1006/breeze-asr-local/issues"
+Homepage = "https://github.com/thc1006/breeze-asr-snapdragon"
+Repository = "https://github.com/thc1006/breeze-asr-snapdragon"
+Issues = "https://github.com/thc1006/breeze-asr-snapdragon/issues"
 
 [project.optional-dependencies]
 dev = [

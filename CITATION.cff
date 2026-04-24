@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-title: "breeze-asr-local"
+title: "breeze-asr-snapdragon"
 abstract: >-
   Local Taiwanese Mandarin speech-to-text on Windows ARM64 Snapdragon X
   Copilot+ PCs. Wraps a native ARM64 whisper.cpp build (NEON + dotprod +
@@ -14,8 +14,8 @@ abstract: >-
 authors:
   - alias: thc1006
     name: "thc1006"
-repository-code: "https://github.com/thc1006/breeze-asr-local"
-url: "https://github.com/thc1006/breeze-asr-local"
+repository-code: "https://github.com/thc1006/breeze-asr-snapdragon"
+url: "https://github.com/thc1006/breeze-asr-snapdragon"
 license: Apache-2.0
 keywords:
   - speech-recognition

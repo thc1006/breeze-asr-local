@@ -1,4 +1,4 @@
-# breeze-asr-local
+# breeze-asr-snapdragon
 
 **在 Windows ARM64 (Snapdragon X Copilot+ PC) 本地跑 MediaTek Breeze-ASR-25**,保留 fp16 精準度、用 native NEON + KleidiAI 把長音檔 RTF 壓到 0.47×,短音檔 1.66× (都比 realtime 快)。
 
@@ -70,8 +70,8 @@ Snapdragon X Copilot+ PC (例如 Acer Swift 14 AI, ASUS Vivobook S, Lenovo Yoga 
 winget install astral-sh.uv
 
 # 2. clone
-git clone https://github.com/thc1006/breeze-asr-local
-cd breeze-asr-local
+git clone https://github.com/thc1006/breeze-asr-snapdragon
+cd breeze-asr-snapdragon
 
 # 3. 建 Python venv + 裝依賴
 uv sync --all-extras

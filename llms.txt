@@ -1,4 +1,4 @@
-# breeze-asr-local
+# breeze-asr-snapdragon
 
 > Local Taiwanese Mandarin speech-to-text on Windows ARM64 Snapdragon X
 > Copilot+ PCs. First public Windows-on-ARM build recipe for MediaTek's
@@ -33,8 +33,8 @@
 ## How to install and run
 
 ```powershell
-git clone https://github.com/thc1006/breeze-asr-local
-cd breeze-asr-local
+git clone https://github.com/thc1006/breeze-asr-snapdragon
+cd breeze-asr-snapdragon
 pwsh -File scripts\setup.ps1          # install LLVM + VS ARM64 workload + build whisper.cpp
 uv sync --all-extras                   # install Python deps
 uv run python -m asr_local.cli audio.m4a

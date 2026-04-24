@@ -7,7 +7,7 @@ Agentic AI Foundation.
 
 ## Project summary
 
-`breeze-asr-local` is a Python CLI that runs MediaTek's Breeze-ASR-25 (a
+`breeze-asr-snapdragon` is a Python CLI that runs MediaTek's Breeze-ASR-25 (a
 Whisper-large-v2 fine-tune for Taiwanese Mandarin + code-switching English)
 locally on Windows ARM64 Snapdragon X Copilot+ PCs, using a native ARM64
 whisper.cpp build with NEON + dotprod + i8mm kernels. No NVIDIA GPU, no
