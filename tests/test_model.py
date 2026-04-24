@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from asr_local.model import (
+from breeze_asr.model import (
     EXPECTED_SIZES,
     VARIANT_FILES,
     GgmlValidationError,
@@ -91,7 +91,7 @@ class TestEnsureGgmlOrchestration:
         fake = tmp_path / "fake-q8_0.bin"
         fake.write_bytes(b"lmgg" + b"\x00" * (EXPECTED_SIZES["q8_0"] - 4))
         mock_dl = mocker.patch(
-            "asr_local.model.hf_hub_download", return_value=str(fake)
+            "breeze_asr.model.hf_hub_download", return_value=str(fake)
         )
         result = ensure_ggml(variant="q8_0")
         assert result == fake
@@ -106,7 +106,7 @@ class TestEnsureGgmlOrchestration:
         fake = tmp_path / "fake-q4_0.bin"
         fake.write_bytes(b"lmgg" + b"\x00" * (EXPECTED_SIZES["q4_0"] - 4))
         mock_dl = mocker.patch(
-            "asr_local.model.hf_hub_download", return_value=str(fake)
+            "breeze_asr.model.hf_hub_download", return_value=str(fake)
         )
         ensure_ggml(variant="q4_0")
         kwargs = mock_dl.call_args.kwargs
@@ -119,7 +119,7 @@ class TestEnsureGgmlOrchestration:
         fake = tmp_path / "fake.bin"
         # right size but wrong magic — something went wrong mid-download
         fake.write_bytes(b"<htm" + b"\x00" * (EXPECTED_SIZES["q8_0"] - 4))
-        mocker.patch("asr_local.model.hf_hub_download", return_value=str(fake))
+        mocker.patch("breeze_asr.model.hf_hub_download", return_value=str(fake))
         with pytest.raises(GgmlValidationError):
             ensure_ggml(variant="q8_0")
 
@@ -129,6 +129,6 @@ class TestEnsureGgmlOrchestration:
         fake = tmp_path / "fake.bin"
         # correct magic but truncated
         fake.write_bytes(b"lmgg" + b"\x00" * 1000)
-        mocker.patch("asr_local.model.hf_hub_download", return_value=str(fake))
+        mocker.patch("breeze_asr.model.hf_hub_download", return_value=str(fake))
         with pytest.raises(GgmlValidationError):
             ensure_ggml(variant="q8_0")

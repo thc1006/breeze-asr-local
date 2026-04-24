@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from asr_local.segment import TimestampedSegment
-from asr_local.writer import save_transcript
+from breeze_asr.segment import TimestampedSegment
+from breeze_asr.writer import save_transcript
 
 
 def _sample_segments() -> list[TimestampedSegment]:

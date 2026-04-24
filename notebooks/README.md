@@ -6,7 +6,7 @@ Breeze-ASR-25 on a Colab NVIDIA GPU via HuggingFace Transformers.
 
 It is kept here as a reference for the "before" state. Do not try to run
 it locally on Windows — it hard-codes `/content` paths, pulls
-`google.colab.files`, and assumes CUDA. Use the `asr_local` CLI at the
+`google.colab.files`, and assumes CUDA. Use the `breeze_asr` CLI at the
 repo root for local transcription.
 
 **File status**: preserved as-is from the original Colab export. The

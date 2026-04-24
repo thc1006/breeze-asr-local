@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from asr_local.segment import TimestampedSegment
-from asr_local.transcriber import (
+from breeze_asr.segment import TimestampedSegment
+from breeze_asr.transcriber import (
     WhisperCliError,
     WhisperCliNotFoundError,
     _build_command,
@@ -259,7 +259,7 @@ class TestRunWhisperPriority:
             )
             return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-        run = mocker.patch("asr_local.transcriber.subprocess.run", side_effect=fake_run)
+        run = mocker.patch("breeze_asr.transcriber.subprocess.run", side_effect=fake_run)
         run_whisper(wav_path=wav, model_path=model, binary_path=binary)
         assert run.call_args.kwargs.get("creationflags") == 0
 
@@ -280,7 +280,7 @@ class TestRunWhisperPriority:
             )
             return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
 
-        run = mocker.patch("asr_local.transcriber.subprocess.run", side_effect=fake_run)
+        run = mocker.patch("breeze_asr.transcriber.subprocess.run", side_effect=fake_run)
         run_whisper(
             wav_path=wav, model_path=model, binary_path=binary, priority="high"
         )
@@ -312,7 +312,7 @@ class TestRunWhisperOrchestration:
             p.touch()
 
         mocker.patch(
-            "asr_local.transcriber.subprocess.run",
+            "breeze_asr.transcriber.subprocess.run",
             return_value=subprocess.CompletedProcess(
                 args=[], returncode=1, stdout=b"", stderr=b"model load failed"
             ),
@@ -341,7 +341,7 @@ class TestRunWhisperOrchestration:
                 args=cmd, returncode=0, stdout=b"", stderr=b""
             )
 
-        mocker.patch("asr_local.transcriber.subprocess.run", side_effect=fake_run)
+        mocker.patch("breeze_asr.transcriber.subprocess.run", side_effect=fake_run)
         segments = run_whisper(wav_path=wav, model_path=model, binary_path=binary)
         assert len(segments) == 2
         assert segments[0].text == "你好,歡迎收聽本節目。"
@@ -355,7 +355,7 @@ class TestRunWhisperOrchestration:
         for p in (wav, model, binary):
             p.touch()
         mocker.patch(
-            "asr_local.transcriber.subprocess.run",
+            "breeze_asr.transcriber.subprocess.run",
             side_effect=subprocess.TimeoutExpired(cmd="whisper-cli", timeout=5),
         )
         with pytest.raises(WhisperCliError, match="timed out"):
@@ -369,10 +369,10 @@ class TestResolveDefaultBinary:
 
     def test_raises_when_neither_binary_exists(self, tmp_path: Path, mocker) -> None:
         mocker.patch(
-            "asr_local.transcriber._NATIVE_ARM64", tmp_path / "never" / "whisper-cli.exe"
+            "breeze_asr.transcriber._NATIVE_ARM64", tmp_path / "never" / "whisper-cli.exe"
         )
         mocker.patch(
-            "asr_local.transcriber._PRISM_X64", tmp_path / "nope" / "whisper-cli.exe"
+            "breeze_asr.transcriber._PRISM_X64", tmp_path / "nope" / "whisper-cli.exe"
         )
         with pytest.raises(WhisperCliNotFoundError):
             resolve_default_binary()
@@ -384,8 +384,8 @@ class TestResolveDefaultBinary:
         prism.parent.mkdir(parents=True)
         native.touch()
         prism.touch()
-        mocker.patch("asr_local.transcriber._NATIVE_ARM64", native)
-        mocker.patch("asr_local.transcriber._PRISM_X64", prism)
+        mocker.patch("breeze_asr.transcriber._NATIVE_ARM64", native)
+        mocker.patch("breeze_asr.transcriber._PRISM_X64", prism)
         assert resolve_default_binary() == native
 
     def test_falls_back_to_prism_when_native_missing(
@@ -395,6 +395,6 @@ class TestResolveDefaultBinary:
         prism = tmp_path / "Release" / "whisper-cli.exe"
         prism.parent.mkdir(parents=True)
         prism.touch()
-        mocker.patch("asr_local.transcriber._NATIVE_ARM64", native)
-        mocker.patch("asr_local.transcriber._PRISM_X64", prism)
+        mocker.patch("breeze_asr.transcriber._NATIVE_ARM64", native)
+        mocker.patch("breeze_asr.transcriber._PRISM_X64", prism)
         assert resolve_default_binary() == prism

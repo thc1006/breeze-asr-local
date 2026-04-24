@@ -144,7 +144,7 @@ def run_whisper(
       3000 = same as 0 (whisper's native ceiling).
       640  = 6.4 s context (safe for clips up to 6.4 s).
     Any audio past `audio_ctx / 100` seconds is silently truncated.
-    See `asr_local.cli.choose_audio_ctx` for a safe auto-tuner.
+    See `breeze_asr.cli.choose_audio_ctx` for a safe auto-tuner.
     """
     if binary_path is not None:
         binary = Path(binary_path)
@@ -153,7 +153,7 @@ def run_whisper(
     else:
         binary = resolve_default_binary()
 
-    with tempfile.TemporaryDirectory(prefix="asr_local_out_") as td:
+    with tempfile.TemporaryDirectory(prefix="breeze_asr_out_") as td:
         out_prefix = Path(td) / "transcribe"
         cmd = _build_command(
             binary_path=binary,

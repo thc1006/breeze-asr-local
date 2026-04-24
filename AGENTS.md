@@ -50,25 +50,25 @@ uv run pytest tests --run-slow    # +1 real-model integration test (~30 s, downl
 
 ```powershell
 # Single file
-uv run python -m asr_local.cli path\to\audio.m4a
+uv run python -m breeze_asr.cli path\to\audio.m4a
 
 # Batch (model loaded once, amortized across files)
-uv run python -m asr_local.cli a.m4a b.m4a c.wav
+uv run python -m breeze_asr.cli a.m4a b.m4a c.wav
 
 # Explicit quant choice
-uv run python -m asr_local.cli --quant q4_0 long_lecture.m4a     # 1.4-1.7x faster, same content on Mandarin
-uv run python -m asr_local.cli --quant fp16 high_precision.m4a   # maximum precision (3 GB model)
+uv run python -m breeze_asr.cli --quant q4_0 long_lecture.m4a     # 1.4-1.7x faster, same content on Mandarin
+uv run python -m breeze_asr.cli --quant fp16 high_precision.m4a   # maximum precision (3 GB model)
 ```
 
 ## Architecture (do not change lightly)
 
-- `src/asr_local/segment.py`: immutable `TimestampedSegment` dataclass
-- `src/asr_local/audio.py`: ffmpeg transcoding with 16 kHz mono PCM_S16LE fast-path passthrough
-- `src/asr_local/model.py`: Hugging Face download + GGML magic/size validation (multi-repo routing: Q4_0 from `lsheep/Breeze-ASR-25-ggml`, others from `alan314159/Breeze-ASR-25-whispercpp`)
-- `src/asr_local/vad.py`: Silero VAD download from `ggml-org/whisper-vad`
-- `src/asr_local/transcriber.py`: whisper-cli subprocess wrapper (auto-chooses `-p / -t / -ac / -nfa / --vad / priority`)
-- `src/asr_local/writer.py`: UTF-8 TXT output with `[HH:MM:SS - HH:MM:SS] text` lines
-- `src/asr_local/cli.py`: argparse + auto-tuners + multi-file orchestration
+- `src/breeze_asr/segment.py`: immutable `TimestampedSegment` dataclass
+- `src/breeze_asr/audio.py`: ffmpeg transcoding with 16 kHz mono PCM_S16LE fast-path passthrough
+- `src/breeze_asr/model.py`: Hugging Face download + GGML magic/size validation (multi-repo routing: Q4_0 from `lsheep/Breeze-ASR-25-ggml`, others from `alan314159/Breeze-ASR-25-whispercpp`)
+- `src/breeze_asr/vad.py`: Silero VAD download from `ggml-org/whisper-vad`
+- `src/breeze_asr/transcriber.py`: whisper-cli subprocess wrapper (auto-chooses `-p / -t / -ac / -nfa / --vad / priority`)
+- `src/breeze_asr/writer.py`: UTF-8 TXT output with `[HH:MM:SS - HH:MM:SS] text` lines
+- `src/breeze_asr/cli.py`: argparse + auto-tuners + multi-file orchestration
 
 ## Testing philosophy
 

@@ -57,7 +57,7 @@ def convert_to_16k_mono_wav(src_path: Path | str) -> tuple[Path, float, bool]:
 
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
 
-    fd, out_path_str = tempfile.mkstemp(suffix=".wav", prefix="asr_local_")
+    fd, out_path_str = tempfile.mkstemp(suffix=".wav", prefix="breeze_asr_")
     os.close(fd)
     out_path = Path(out_path_str)
 

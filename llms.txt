@@ -7,7 +7,7 @@
 
 ## What it is
 
-- A Python CLI (`asr-local`) + supporting native whisper.cpp ARM64 build.
+- A Python CLI (`breeze-asr`) + supporting native whisper.cpp ARM64 build.
 - Target hardware: Windows 11 on ARM64, Qualcomm Snapdragon X Plus / X Elite
   Copilot+ PCs. Works on any 8-core+ Oryon machine with 16 GB RAM.
 - Model: MediaTek-Research/Breeze-ASR-25 (Whisper-large-v2 1.55 B params,
@@ -26,7 +26,7 @@
 - ~8x speedup vs the prebuilt x64 whisper.cpp binary running under Windows
   Prism x64 emulation on the same hardware (75.4s -> 9.6s on the 5.8s clip).
 - 144 TDD tests (143 unit + 1 slow integration).
-- Multi-file batch CLI: `asr-local a.m4a b.m4a c.wav` (model loaded once).
+- Multi-file batch CLI: `breeze-asr a.m4a b.m4a c.wav` (model loaded once).
 - `--decode greedy` optional flag: 17.5% faster on long Mandarin audio with
   identical transcript (default stays beam=5 for code-switch safety).
 
@@ -37,13 +37,13 @@ git clone https://github.com/thc1006/breeze-asr-snapdragon
 cd breeze-asr-snapdragon
 pwsh -File scripts\setup.ps1          # install LLVM + VS ARM64 workload + build whisper.cpp
 uv sync --all-extras                   # install Python deps
-uv run python -m asr_local.cli audio.m4a
+uv run python -m breeze_asr.cli audio.m4a
 ```
 
 Batch mode, loads model once:
 
 ```powershell
-uv run python -m asr_local.cli a.m4a b.m4a c.wav
+uv run python -m breeze_asr.cli a.m4a b.m4a c.wav
 ```
 
 For another ~30% perf on top: `pwsh -File scripts\tune-power.ps1` (sets
@@ -65,7 +65,7 @@ Windows to Best Performance power plan, disables core parking).
 - `docs/perf_journey.md`: the full story of going from RTF 13.7x (x64
   Prism emulation) to RTF 0.47x (native ARM64 + tuning).
 - `AGENTS.md`: build and test commands for AI coding agents.
-- `src/asr_local/`: Python package (audio, model, vad, transcriber,
+- `src/breeze_asr/`: Python package (audio, model, vad, transcriber,
   writer, cli, segment).
 - `scripts/setup.ps1`: one-shot toolchain install + whisper.cpp clone + build.
 - `scripts/tune-power.ps1`: Windows power-plan helper (~40% extra on

@@ -35,7 +35,7 @@ dev = [
 ]
 
 [project.scripts]
-asr-local = "asr_local.cli:main"
+breeze-asr = "breeze_asr.cli:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

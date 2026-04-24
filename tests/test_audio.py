@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 import soundfile as sf
 
-from asr_local.audio import AudioConversionError, convert_to_16k_mono_wav
+from breeze_asr.audio import AudioConversionError, convert_to_16k_mono_wav
 
 
 class TestConvertResamplesAndDownmixes:
@@ -68,7 +68,7 @@ class TestConvertErrors:
         src = tmp_path / "a.wav"
         src.write_bytes(b"\x00")  # existence check only
         mocker.patch(
-            "asr_local.audio.subprocess.run",
+            "breeze_asr.audio.subprocess.run",
             side_effect=sp.TimeoutExpired(cmd="ffmpeg", timeout=300),
         )
         with pytest.raises(AudioConversionError, match="timed out"):

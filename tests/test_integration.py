@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from asr_local.audio import convert_to_16k_mono_wav
-from asr_local.model import ensure_ggml
-from asr_local.transcriber import run_whisper
+from breeze_asr.audio import convert_to_16k_mono_wav
+from breeze_asr.model import ensure_ggml
+from breeze_asr.transcriber import run_whisper
 
 
 pytestmark = pytest.mark.slow

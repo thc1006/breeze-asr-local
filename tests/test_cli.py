@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from asr_local import cli
-from asr_local.cli import (
+from breeze_asr import cli
+from breeze_asr.cli import (
     choose_audio_ctx,
     choose_flash_attn,
     choose_processors,
     choose_vad,
 )
-from asr_local.segment import TimestampedSegment
+from breeze_asr.segment import TimestampedSegment
 
 
 class TestChooseVad:
@@ -202,12 +202,12 @@ class TestMultiFileBatch:
         model = tmp_path / "m.bin"
         model.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 5.0, True)
+            "breeze_asr.cli.convert_to_16k_mono_wav", return_value=(wav, 5.0, True)
         )
-        mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
-        mocker.patch("asr_local.cli.ensure_vad_model", return_value=tmp_path / "vad.bin")
+        mocker.patch("breeze_asr.cli.ensure_ggml", return_value=model)
+        mocker.patch("breeze_asr.cli.ensure_vad_model", return_value=tmp_path / "vad.bin")
         mocker.patch(
-            "asr_local.cli.run_whisper",
+            "breeze_asr.cli.run_whisper",
             return_value=[TimestampedSegment(0.0, 1.0, "你好")] * num_segments,
         )
         # real save_transcript so we can check per-file outputs exist
@@ -260,7 +260,7 @@ class TestMultiFileBatch:
             a.write_bytes(b"\x00")
         self._stub_pipeline(tmp_path, mocker)
         ensure = mocker.patch(
-            "asr_local.cli.ensure_ggml", return_value=tmp_path / "m.bin"
+            "breeze_asr.cli.ensure_ggml", return_value=tmp_path / "m.bin"
         )
         cli.main([str(a1), str(a2), str(a3)])
         assert ensure.call_count == 1, "model should be loaded once per batch"
@@ -273,7 +273,7 @@ class TestMultiFileBatch:
         a2.write_bytes(b"\x00")
         self._stub_pipeline(tmp_path, mocker)
         # a1 fails on run_whisper; a2 should still succeed.
-        from asr_local.transcriber import WhisperCliError
+        from breeze_asr.transcriber import WhisperCliError
 
         call_count = {"n": 0}
 
@@ -283,7 +283,7 @@ class TestMultiFileBatch:
                 raise WhisperCliError("a1 failed")
             return [TimestampedSegment(0.0, 1.0, "b")]
 
-        mocker.patch("asr_local.cli.run_whisper", side_effect=run_whisper_stub)
+        mocker.patch("breeze_asr.cli.run_whisper", side_effect=run_whisper_stub)
         rc = cli.main([str(a1), str(a2)])
         assert rc == 4, "exit code is worst individual (WhisperCliError -> 4)"
         assert (tmp_path / "a2.transcript.txt").exists(), "a2 must still be transcribed"
@@ -309,19 +309,19 @@ class TestMain:
         txt_out = tmp_path / "a.transcript.txt"
 
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav",
+            "breeze_asr.cli.convert_to_16k_mono_wav",
             return_value=(wav_out, 5.0, True),
         )
-        mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
-        mocker.patch("asr_local.cli.ensure_vad_model", return_value=tmp_path / "vad.bin")
+        mocker.patch("breeze_asr.cli.ensure_ggml", return_value=model)
+        mocker.patch("breeze_asr.cli.ensure_vad_model", return_value=tmp_path / "vad.bin")
         mocker.patch(
-            "asr_local.cli.run_whisper",
+            "breeze_asr.cli.run_whisper",
             return_value=[
                 TimestampedSegment(0.0, 2.5, "你好"),
                 TimestampedSegment(2.5, 5.0, "測試"),
             ],
         )
-        mocker.patch("asr_local.cli.save_transcript", return_value=txt_out)
+        mocker.patch("breeze_asr.cli.save_transcript", return_value=txt_out)
 
         rc = cli.main([str(audio)])
         assert rc == 0
@@ -332,14 +332,14 @@ class TestMain:
         audio = tmp_path / "a.wav"
         audio.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav",
+            "breeze_asr.cli.convert_to_16k_mono_wav",
             return_value=(tmp_path / "converted.wav", 1.0, True),
         )
         model = tmp_path / "m"
         model.write_bytes(b"\x00")
-        mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
-        mocker.patch("asr_local.cli.run_whisper", return_value=[])
-        mocker.patch("asr_local.cli.save_transcript", return_value=None)
+        mocker.patch("breeze_asr.cli.ensure_ggml", return_value=model)
+        mocker.patch("breeze_asr.cli.run_whisper", return_value=[])
+        mocker.patch("breeze_asr.cli.save_transcript", return_value=None)
 
         rc = cli.main([str(audio)])
         assert rc == 2
@@ -347,12 +347,12 @@ class TestMain:
     def test_audio_conversion_error_exits_with_clean_message(
         self, tmp_path: Path, mocker, capsys
     ) -> None:
-        from asr_local.audio import AudioConversionError
+        from breeze_asr.audio import AudioConversionError
 
         audio = tmp_path / "bad.wav"
         audio.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav",
+            "breeze_asr.cli.convert_to_16k_mono_wav",
             side_effect=AudioConversionError("ffmpeg: invalid stream"),
         )
         rc = cli.main([str(audio)])
@@ -366,7 +366,7 @@ class TestMain:
     ) -> None:
         # WhisperCliNotFoundError is a WhisperCliError subclass and must
         # flow through the same error handler.
-        from asr_local.transcriber import WhisperCliNotFoundError
+        from breeze_asr.transcriber import WhisperCliNotFoundError
 
         audio = tmp_path / "a.wav"
         audio.write_bytes(b"\x00")
@@ -375,11 +375,11 @@ class TestMain:
         model = tmp_path / "m.bin"
         model.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
+            "breeze_asr.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
         )
-        mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
+        mocker.patch("breeze_asr.cli.ensure_ggml", return_value=model)
         mocker.patch(
-            "asr_local.cli.run_whisper",
+            "breeze_asr.cli.run_whisper",
             side_effect=WhisperCliNotFoundError("binary missing"),
         )
         rc = cli.main([str(audio)])
@@ -389,17 +389,17 @@ class TestMain:
     def test_ggml_validation_error_exits_with_code_5(
         self, tmp_path: Path, mocker, capsys
     ) -> None:
-        from asr_local.model import GgmlValidationError
+        from breeze_asr.model import GgmlValidationError
 
         audio = tmp_path / "a.wav"
         audio.write_bytes(b"\x00")
         wav = tmp_path / "converted.wav"
         wav.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
+            "breeze_asr.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
         )
         mocker.patch(
-            "asr_local.cli.ensure_ggml",
+            "breeze_asr.cli.ensure_ggml",
             side_effect=GgmlValidationError("bad magic"),
         )
         rc = cli.main([str(audio)])
@@ -414,10 +414,10 @@ class TestMain:
         wav = tmp_path / "converted.wav"
         wav.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
+            "breeze_asr.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
         )
         mocker.patch(
-            "asr_local.cli.ensure_ggml",
+            "breeze_asr.cli.ensure_ggml",
             side_effect=ConnectionError("HF unreachable"),
         )
         rc = cli.main([str(audio)])
@@ -434,11 +434,11 @@ class TestMain:
         model = tmp_path / "m.bin"
         model.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
+            "breeze_asr.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
         )
-        mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
-        rw = mocker.patch("asr_local.cli.run_whisper", return_value=[])
-        mocker.patch("asr_local.cli.save_transcript", return_value=None)
+        mocker.patch("breeze_asr.cli.ensure_ggml", return_value=model)
+        rw = mocker.patch("breeze_asr.cli.run_whisper", return_value=[])
+        mocker.patch("breeze_asr.cli.save_transcript", return_value=None)
 
         cli.main([str(audio), "--timeout", "42"])
         assert rw.call_args.kwargs.get("timeout") == 42.0
@@ -446,7 +446,7 @@ class TestMain:
     def test_whisper_error_exits_with_clean_message(
         self, tmp_path: Path, mocker, capsys
     ) -> None:
-        from asr_local.transcriber import WhisperCliError
+        from breeze_asr.transcriber import WhisperCliError
 
         audio = tmp_path / "a.wav"
         audio.write_bytes(b"\x00")
@@ -455,11 +455,11 @@ class TestMain:
         model = tmp_path / "m.bin"
         model.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
+            "breeze_asr.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
         )
-        mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
+        mocker.patch("breeze_asr.cli.ensure_ggml", return_value=model)
         mocker.patch(
-            "asr_local.cli.run_whisper",
+            "breeze_asr.cli.run_whisper",
             side_effect=WhisperCliError("model load failed"),
         )
         rc = cli.main([str(audio)])
@@ -473,14 +473,14 @@ class TestMain:
         audio = tmp_path / "a.wav"
         audio.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav",
+            "breeze_asr.cli.convert_to_16k_mono_wav",
             return_value=(tmp_path / "converted.wav", 1.0, True),
         )
         model = tmp_path / "m"
         model.write_bytes(b"\x00")
-        ensure = mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
-        mocker.patch("asr_local.cli.run_whisper", return_value=[])
-        mocker.patch("asr_local.cli.save_transcript", return_value=None)
+        ensure = mocker.patch("breeze_asr.cli.ensure_ggml", return_value=model)
+        mocker.patch("breeze_asr.cli.run_whisper", return_value=[])
+        mocker.patch("breeze_asr.cli.save_transcript", return_value=None)
 
         cli.main([str(audio), "--quant", "fp16"])
         ensure.assert_called_once()
@@ -494,17 +494,17 @@ class TestMain:
         tmp_wav = tmp_path / "converted.wav"
         tmp_wav.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav", return_value=(tmp_wav, 1.0, True)
+            "breeze_asr.cli.convert_to_16k_mono_wav", return_value=(tmp_wav, 1.0, True)
         )
         model = tmp_path / "m"
         model.write_bytes(b"\x00")
-        mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
-        mocker.patch("asr_local.cli.ensure_vad_model", return_value=tmp_path / "vad.bin")
+        mocker.patch("breeze_asr.cli.ensure_ggml", return_value=model)
+        mocker.patch("breeze_asr.cli.ensure_vad_model", return_value=tmp_path / "vad.bin")
         mocker.patch(
-            "asr_local.cli.run_whisper",
+            "breeze_asr.cli.run_whisper",
             return_value=[TimestampedSegment(0, 1, "x")],
         )
-        mocker.patch("asr_local.cli.save_transcript", return_value=tmp_path / "o.txt")
+        mocker.patch("breeze_asr.cli.save_transcript", return_value=tmp_path / "o.txt")
 
         cli.main([str(audio)])
         assert not tmp_wav.exists()

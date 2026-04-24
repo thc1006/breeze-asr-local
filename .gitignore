@@ -24,8 +24,18 @@ models/
 *.transcript.txt
 1woman.transcript.txt
 
-# Local test samples (user-provided private audio)
-1woman.m4a
+# Local test samples (user-provided private audio — never commit)
+# GitHub rejects files >100 MB via pre-receive hook; rule-out all common
+# audio formats at any depth to prevent accidental `git add -A` snags.
+*.m4a
+*.mp3
+*.wav
+*.ogg
+*.flac
+*.aac
+*.opus
+# Explicit allowlist for tiny synthetic fixtures the tests generate at
+# runtime lives under tmp_path, not the repo — no exception needed.
 samples/
 
 # Editor / OS

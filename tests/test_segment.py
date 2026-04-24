@@ -3,7 +3,7 @@ import dataclasses
 
 import pytest
 
-from asr_local.segment import TimestampedSegment, format_time_display
+from breeze_asr.segment import TimestampedSegment, format_time_display
 
 
 class TestFormatTimeDisplay:

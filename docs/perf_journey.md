@@ -183,7 +183,7 @@ full list with CLI flags; brief summary here:
 - **Auto `-p 2 -t 4` for audio ≥ 30 s**: two parallel chunk decoders each on
   half the cores beat a single full-core decoder by 25 % on an 8-core Oryon.
   On 57.6 s synthetic: 36.0 s → 27.3 s.
-- **Silero VAD auto-enabled for audio ≥ 30 s** via new `asr_local.vad` module.
+- **Silero VAD auto-enabled for audio ≥ 30 s** via new `breeze_asr.vad` module.
   Downloads `ggml-silero-v6.2.0.bin` from `ggml-org/whisper-vad` (885 KB) on
   first use. Typical wall-clock saving 30–50 % on real speech with silence;
   CER neutral or better (fewer silence hallucinations).

@@ -1,4 +1,4 @@
-"""Command-line entry point for asr-local."""
+"""Command-line entry point for breeze-asr."""
 from __future__ import annotations
 
 import argparse
@@ -92,7 +92,7 @@ def choose_audio_ctx(duration_s: float) -> int:
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="asr-local",
+        prog="breeze-asr",
         description="Local Taiwanese Mandarin ASR (MediaTek Breeze-ASR-25 via whisper.cpp).",
     )
     parser.add_argument(

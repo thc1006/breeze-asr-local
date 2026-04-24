@@ -205,7 +205,7 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host ""
     Write-Host "Next:" -ForegroundColor Cyan
     Write-Host "  uv sync --all-extras"
-    Write-Host "  uv run python -m asr_local.cli path\to\audio.m4a"
+    Write-Host "  uv run python -m breeze_asr.cli path\to\audio.m4a"
 } else {
     Write-Err "whisper-cli failed to start (exit $LASTEXITCODE). Check for missing DLLs."
     exit 1
