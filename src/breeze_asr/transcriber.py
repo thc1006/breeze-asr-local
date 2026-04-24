@@ -64,6 +64,9 @@ def _build_command(
     flash_attn: bool = True,
     processors: int = 1,
     vad_model_path: Path | None = None,
+    vad_threshold: float | None = None,
+    vad_min_silence_ms: int | None = None,
+    max_context: int | None = None,
     greedy: bool = False,
 ) -> list[str]:
     cmd = [
@@ -84,6 +87,13 @@ def _build_command(
         cmd += ["-p", str(processors)]
     if vad_model_path is not None:
         cmd += ["--vad", "-vm", str(vad_model_path)]
+        # VAD tuning flags only make sense when VAD is enabled.
+        if vad_threshold is not None:
+            cmd += ["-vt", str(vad_threshold)]
+        if vad_min_silence_ms is not None:
+            cmd += ["-vsd", str(vad_min_silence_ms)]
+    if max_context is not None:
+        cmd += ["-mc", str(max_context)]
     if greedy:
         # Disable beam search: beam=1, best_of=1 (~15-20% faster on long
         # Mandarin audio; empirically identical transcripts on Breeze-ASR-25
@@ -130,6 +140,9 @@ def run_whisper(
     audio_ctx: int = 0,
     flash_attn: bool = True,
     vad_model_path: Path | None = None,
+    vad_threshold: float | None = None,
+    vad_min_silence_ms: int | None = None,
+    max_context: int | None = None,
     greedy: bool = False,
     priority: str = "normal",
     binary_path: Path | None = None,
@@ -166,6 +179,9 @@ def run_whisper(
             flash_attn=flash_attn,
             processors=processors,
             vad_model_path=vad_model_path,
+            vad_threshold=vad_threshold,
+            vad_min_silence_ms=vad_min_silence_ms,
+            max_context=max_context,
             greedy=greedy,
         )
         flags = _PRIORITY_FLAGS.get(priority, 0)

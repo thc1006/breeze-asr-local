@@ -178,6 +178,24 @@ class TestParseArgs:
         with pytest.raises(SystemExit):
             cli.parse_args([str(tmp_path / "a.wav"), "--decode", "bogus"])
 
+    def test_vad_threshold_flag_accepted(self, tmp_path: Path) -> None:
+        args = cli.parse_args([str(tmp_path / "a.wav"), "--vad-threshold", "0.65"])
+        assert args.vad_threshold == 0.65
+
+    def test_vad_min_silence_ms_flag_accepted(self, tmp_path: Path) -> None:
+        args = cli.parse_args([str(tmp_path / "a.wav"), "--vad-min-silence-ms", "50"])
+        assert args.vad_min_silence_ms == 50
+
+    def test_max_context_flag_accepted(self, tmp_path: Path) -> None:
+        args = cli.parse_args([str(tmp_path / "a.wav"), "--max-context", "0"])
+        assert args.max_context == 0
+
+    def test_default_vad_tuning_is_none(self, tmp_path: Path) -> None:
+        args = cli.parse_args([str(tmp_path / "a.wav")])
+        assert args.vad_threshold is None
+        assert args.vad_min_silence_ms is None
+        assert args.max_context is None
+
     def test_explicit_threads_override(self, tmp_path: Path) -> None:
         args = cli.parse_args([str(tmp_path / "a.wav"), "--threads", "6"])
         assert args.threads == 6

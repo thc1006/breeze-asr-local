@@ -2,12 +2,22 @@
 from __future__ import annotations
 
 import argparse
+import io
 import math
 import os
 import sys
 import time
 from pathlib import Path
 from typing import Sequence
+
+# Force line-buffered stdout/stderr so batch users watching via `tee` or `>`
+# see per-file progress in real time instead of getting a burst at the end.
+# Has no effect when already line-buffered (interactive TTY).
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except (AttributeError, io.UnsupportedOperation):
+    pass
 
 from .audio import AudioConversionError, convert_to_16k_mono_wav
 from .model import GgmlValidationError, VARIANT_FILES, ensure_ggml
@@ -146,6 +156,24 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Force Silero VAD on/off (auto: on for audio >= 30 s)",
     )
     parser.add_argument(
+        "--vad-threshold",
+        type=float,
+        default=None,
+        help="VAD speech probability threshold 0.0-1.0 (default: 0.5; higher = stricter, more silence skipped)",
+    )
+    parser.add_argument(
+        "--vad-min-silence-ms",
+        type=int,
+        default=None,
+        help="VAD minimum silence duration in ms to split on (default: 100; lower = more aggressive)",
+    )
+    parser.add_argument(
+        "--max-context",
+        type=int,
+        default=None,
+        help="Max text tokens carried across 30-s chunks (default: -1 = unbounded; 0 = none, faster on non-continuous audio)",
+    )
+    parser.add_argument(
         "--priority",
         choices=("normal", "high"),
         default="normal",
@@ -211,6 +239,9 @@ def _transcribe_one(
             audio_ctx=audio_ctx,
             flash_attn=flash_attn,
             vad_model_path=vad_model_path,
+            vad_threshold=args.vad_threshold,
+            vad_min_silence_ms=args.vad_min_silence_ms,
+            max_context=args.max_context,
             greedy=(args.decode == "greedy"),
             priority=args.priority,
             timeout=args.timeout,

@@ -240,6 +240,94 @@ class TestBuildCommand:
         i = cmd.index("-vm")
         assert cmd[i + 1] == str(vad)
 
+    def test_vad_threshold_default_omits_flag(self, tmp_path: Path) -> None:
+        vad = tmp_path / "silero.bin"
+        vad.touch()
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="zh",
+            threads=1,
+            output_prefix=tmp_path / "o",
+            vad_model_path=vad,
+        )
+        assert "-vt" not in cmd
+
+    def test_vad_threshold_forwarded(self, tmp_path: Path) -> None:
+        vad = tmp_path / "silero.bin"
+        vad.touch()
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="zh",
+            threads=1,
+            output_prefix=tmp_path / "o",
+            vad_model_path=vad,
+            vad_threshold=0.65,
+        )
+        i = cmd.index("-vt")
+        assert cmd[i + 1] == "0.65"
+
+    def test_vad_min_silence_ms_forwarded(self, tmp_path: Path) -> None:
+        vad = tmp_path / "silero.bin"
+        vad.touch()
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="zh",
+            threads=1,
+            output_prefix=tmp_path / "o",
+            vad_model_path=vad,
+            vad_min_silence_ms=50,
+        )
+        i = cmd.index("-vsd")
+        assert cmd[i + 1] == "50"
+
+    def test_vad_tuning_ignored_when_vad_off(self, tmp_path: Path) -> None:
+        # VAD tuning flags should be omitted if VAD itself is off — they'd
+        # be ignored by whisper-cli but cleaner to not emit noise.
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="zh",
+            threads=1,
+            output_prefix=tmp_path / "o",
+            vad_threshold=0.65,
+            vad_min_silence_ms=50,
+        )
+        assert "-vt" not in cmd
+        assert "-vsd" not in cmd
+
+    def test_max_context_default_omits_flag(self, tmp_path: Path) -> None:
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="zh",
+            threads=1,
+            output_prefix=tmp_path / "o",
+        )
+        assert "-mc" not in cmd
+
+    def test_max_context_zero_forwarded(self, tmp_path: Path) -> None:
+        # 0 = no cross-chunk context; useful for non-continuous audio like
+        # multi-speaker meetings where each turn is independent.
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="zh",
+            threads=1,
+            output_prefix=tmp_path / "o",
+            max_context=0,
+        )
+        i = cmd.index("-mc")
+        assert cmd[i + 1] == "0"
+
 
 class TestRunWhisperPriority:
     def test_default_priority_passes_zero_creationflags(
