@@ -64,6 +64,7 @@ def _build_command(
     flash_attn: bool = True,
     processors: int = 1,
     vad_model_path: Path | None = None,
+    greedy: bool = False,
 ) -> list[str]:
     cmd = [
         str(binary_path),
@@ -83,6 +84,12 @@ def _build_command(
         cmd += ["-p", str(processors)]
     if vad_model_path is not None:
         cmd += ["--vad", "-vm", str(vad_model_path)]
+    if greedy:
+        # Disable beam search: beam=1, best_of=1 (~15-20% faster on long
+        # Mandarin audio; empirically identical transcripts on Breeze-ASR-25
+        # Q8_0 golden samples. Code-switched zh-en audio untested — keep beam
+        # as the default.
+        cmd += ["-bs", "1", "-bo", "1"]
     return cmd
 
 
@@ -123,6 +130,7 @@ def run_whisper(
     audio_ctx: int = 0,
     flash_attn: bool = True,
     vad_model_path: Path | None = None,
+    greedy: bool = False,
     priority: str = "normal",
     binary_path: Path | None = None,
     timeout: float | None = None,
@@ -158,6 +166,7 @@ def run_whisper(
             flash_attn=flash_attn,
             processors=processors,
             vad_model_path=vad_model_path,
+            greedy=greedy,
         )
         flags = _PRIORITY_FLAGS.get(priority, 0)
         try:

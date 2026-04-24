@@ -152,6 +152,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Set whisper-cli process priority (Windows). 'high' gains 1-3%% under load.",
     )
     parser.add_argument(
+        "--decode",
+        choices=("beam", "greedy"),
+        default="beam",
+        help="Decoding strategy. 'beam' = whisper default (beam=5, safer); "
+             "'greedy' = 1-best only, 15-20%% faster on long Mandarin audio "
+             "with identical output measured; untested on code-switched zh-en.",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -203,6 +211,7 @@ def _transcribe_one(
             audio_ctx=audio_ctx,
             flash_attn=flash_attn,
             vad_model_path=vad_model_path,
+            greedy=(args.decode == "greedy"),
             priority=args.priority,
             timeout=args.timeout,
         )

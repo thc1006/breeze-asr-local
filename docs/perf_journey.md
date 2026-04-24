@@ -212,6 +212,27 @@ full list with CLI flags; brief summary here:
   Clang deadlocks. OpenMP stays.
 - Hexagon NPU port of Whisper-large-v2: Qualcomm AI Hub still skips from
   Medium to Large-V3-Turbo. No Breeze-ASR-25 NPU asset exists.
+- **External chunk parallelism** — prototyped 2024-04: `ffmpeg -ss` slice
+  into 2 × 29 s chunks + 2 parallel `whisper-cli -p 1 -t 4` processes via
+  PowerShell Start-Job. Measured on 57.6 s Q4_0 audio: external parallel
+  22.9 s vs internal `-p 2 -t 4` 19.7 s — **external was 16 % slower, not
+  faster.** Claims of 15–25 % speedup from some 2026 blogs are not
+  reproducible on Snapdragon X Plus; the process-spawn + model-remap
+  overhead outweighs internal coordination savings. Internal `-p 2` wins.
+
+## 12. Two later wins that did land
+
+- **KleidiAI Q4_0 path** — `-DGGML_NATIVE=ON` on LLVM 22 emits NEON `sdot`
+  kernels for Q4_0 matmul. Breeze-ASR-25 Q4_0 (from `lsheep/Breeze-ASR-25-ggml`)
+  on a 57.6 s Mandarin clip: **21.9 s vs Q8_0 30.2 s — 1.38× faster with
+  identical transcript.** On the 5.8 s clip: 6.2 s vs 10.4 s — 1.69× faster.
+  Exposed as `--quant q4_0`. Default stays Q8_0 because the precision-first
+  contract was made on Q8_0; users opt in when they need the extra speed.
+- **Greedy decoding** (`--decode greedy`, sets `-bs 1 -bo 1`) — on a 57.6 s
+  Mandarin clip: 23.6 s vs beam-5 default 28.6 s — **17.5 % faster with
+  byte-identical transcript.** Default stays beam=5 because greedy is
+  untested on code-switched zh-en content (Breeze-ASR-25's headline use
+  case); users opt in after evaluating on their own data.
 
 Final measured result on Snapdragon X Plus X1P42100 (still on Balanced power
 plan — expect ~30 % more headroom on Best Performance):

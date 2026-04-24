@@ -196,6 +196,34 @@ class TestBuildCommand:
         assert "--vad" not in cmd
         assert "-vm" not in cmd
 
+    def test_decode_default_beam_omits_bs_bo(self, tmp_path: Path) -> None:
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="zh",
+            threads=1,
+            output_prefix=tmp_path / "o",
+        )
+        # Default: let whisper-cli use beam=5 best_of=5. Don't emit flags.
+        assert "-bs" not in cmd
+        assert "-bo" not in cmd
+
+    def test_decode_greedy_sets_bs1_bo1(self, tmp_path: Path) -> None:
+        cmd = _build_command(
+            binary_path=Path("w"),
+            wav_path=tmp_path / "x.wav",
+            model_path=tmp_path / "m.bin",
+            language="zh",
+            threads=1,
+            output_prefix=tmp_path / "o",
+            greedy=True,
+        )
+        i_bs = cmd.index("-bs")
+        i_bo = cmd.index("-bo")
+        assert cmd[i_bs + 1] == "1"
+        assert cmd[i_bo + 1] == "1"
+
     def test_vad_model_path_adds_flags(self, tmp_path: Path) -> None:
         vad = tmp_path / "silero.bin"
         vad.touch()

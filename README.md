@@ -52,6 +52,7 @@ Snapdragon X Copilot+ PC (例如 Acer Swift 14 AI, ASUS Vivobook S, Lenovo Yoga 
 | native ARM64 `-p 2 -t 4` | 27.3 s | 0.474× |
 | **native ARM64 `-p 2 -t 4 -nfa --vad` (現行預設)** | **27.1 s** | **0.47×** ⭐ |
 | **native ARM64 + KleidiAI Q4_0** | **`--quant q4_0 -p 2 -t 4 -nfa --vad`** | **21.9 s** | **0.38×** 🚀 |
+| native ARM64 + Q4_0 + greedy | `--quant q4_0 --decode greedy ...` | **~19.7 s** | **~0.34×** 🏆 |
 
 **內容精度**:Q8_0 與 fp16 在所有設定下輸出**完全相同**,`-nfa` (CJK) 與 `--vad` 都不損精度。
 
@@ -95,6 +96,7 @@ asr-local <audio> [<audio2> <audio3> ...]   # 可多檔批次
                   [--audio-ctx N]               # 自動依音檔長度計算
                   [--flash-attn/--no-flash-attn] # 自動: off for CJK
                   [--vad/--no-vad]              # 自動: on for audio >= 30s
+                  [--decode beam|greedy]        # beam=5 safer (default) vs greedy 17.5% faster on long zh
                   [--priority normal|high]      # Windows process priority
                   [--timeout SECONDS]
                   [--language zh]

@@ -166,6 +166,18 @@ class TestParseArgs:
         args = cli.parse_args([str(tmp_path / "a.wav")])
         assert args.processors is None
 
+    def test_default_decode_is_beam(self, tmp_path: Path) -> None:
+        args = cli.parse_args([str(tmp_path / "a.wav")])
+        assert args.decode == "beam"
+
+    def test_decode_greedy_accepted(self, tmp_path: Path) -> None:
+        args = cli.parse_args([str(tmp_path / "a.wav"), "--decode", "greedy"])
+        assert args.decode == "greedy"
+
+    def test_decode_unknown_rejected(self, tmp_path: Path) -> None:
+        with pytest.raises(SystemExit):
+            cli.parse_args([str(tmp_path / "a.wav"), "--decode", "bogus"])
+
     def test_explicit_threads_override(self, tmp_path: Path) -> None:
         args = cli.parse_args([str(tmp_path / "a.wav"), "--threads", "6"])
         assert args.threads == 6
