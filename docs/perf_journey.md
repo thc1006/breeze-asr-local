@@ -168,6 +168,63 @@ All of the above is automated in [`scripts/setup.ps1`](../scripts/setup.ps1). It
 
 ---
 
+## 11. Later optimizations (post-native-build)
+
+The native ARM64 rebuild above got us from 13.7× down to 1.4× RTF. A subsequent
+round of tuning, driven by a 2026 research pass across whisper.cpp changelogs,
+community benchmarks, and Snapdragon X perf reports, closes more gaps. See the
+"進階效能調校 / Performance tuning" section of the [README](../README.md) for the
+full list with CLI flags; brief summary here:
+
+- **`--flash-attn` default OFF for `zh/ja/ko`** (whisper.cpp issue #3020). On
+  Mandarin with Breeze-ASR-25 Q8_0 this is both a correctness win and a
+  measured 15 % speedup (11.3 s → 9.6 s on the 5.8 s golden clip). Empirical
+  output is identical.
+- **Auto `-p 2 -t 4` for audio ≥ 30 s**: two parallel chunk decoders each on
+  half the cores beat a single full-core decoder by 25 % on an 8-core Oryon.
+  On 57.6 s synthetic: 36.0 s → 27.3 s.
+- **Silero VAD auto-enabled for audio ≥ 30 s** via new `asr_local.vad` module.
+  Downloads `ggml-silero-v6.2.0.bin` from `ggml-org/whisper-vad` (885 KB) on
+  first use. Typical wall-clock saving 30–50 % on real speech with silence;
+  CER neutral or better (fewer silence hallucinations).
+- **`choose_audio_ctx` correctness fix**: mel frame rate is 100 fps, not 50.
+  The earlier `-ac 512` cap truncated any audio past 5.12 s. Rewritten with
+  `math.ceil(duration × 100) + 64` pad, rounded to 64-aligned boundary.
+- **`scripts/tune-power.ps1`**: Windows "Best Performance" / "Ultimate
+  Performance" power scheme helper, disables core parking, sets
+  `PERFBOOSTMODE=Aggressive`. llama.cpp discussion #8273 reports the default
+  Balanced mode loses ~40 % on sustained CPU work on Snapdragon X. Not
+  auto-invoked by setup.ps1 — user runs it once manually.
+- **`--priority high` flag**: whisper-cli subprocess gets HIGH_PRIORITY_CLASS
+  (1–3 % under Defender / Search contention).
+- **LTO (`CMAKE_INTERPROCEDURAL_OPTIMIZATION=ON`)**: measured neutral on
+  whisper-large-v2 Q8_0 (NEON intrinsics are already inlined). Kept enabled
+  for binary-size and marginal dispatch-code wins.
+
+**What was verified as dead** (don't chase in 2026):
+
+- Speculative decoding is not in whisper.cpp and has no PR. HF blog demo is
+  PyTorch-CUDA only and needs a distilled model that shares Breeze-ASR-25's
+  encoder — doesn't exist.
+- Batched decoder: issue #1048 closed as stale.
+- faster-whisper / CTranslate2 on Windows ARM64: CT2 issue #1756 still open.
+- `ggml-threadpool` replacing OpenMP: whisper.cpp issue #2725 reports ARM64 +
+  Clang deadlocks. OpenMP stays.
+- Hexagon NPU port of Whisper-large-v2: Qualcomm AI Hub still skips from
+  Medium to Large-V3-Turbo. No Breeze-ASR-25 NPU asset exists.
+
+Final measured result on Snapdragon X Plus X1P42100 (still on Balanced power
+plan — expect ~30 % more headroom on Best Performance):
+
+| Audio | Setting | Wall-clock | RTF |
+|---|---|---|---|
+| 5.8 s | new defaults (`-nfa`, ac=640) | 9.6 s | 1.66× |
+| 57.6 s | new defaults (`-p 2 -t 4 -nfa --vad`) | 27.1 s | **0.47×** |
+
+60-minute real speech projected at 20–30 min wall-clock with VAD.
+
+---
+
 ## Sources
 
 - [whisper.cpp Windows-on-Arm tracking issue #2132](https://github.com/ggml-org/whisper.cpp/issues/2132)
