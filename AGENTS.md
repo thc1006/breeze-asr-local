@@ -42,7 +42,7 @@ pwsh -File scripts\build.ps1
 
 ```powershell
 uv sync --all-extras
-uv run pytest tests               # 137 fast tests (<15 s)
+uv run pytest tests               # 143 unit tests + 1 skipped slow integration (<15 s)
 uv run pytest tests --run-slow    # +1 real-model integration test (~30 s, downloads 1.6 GB on first run)
 ```
 

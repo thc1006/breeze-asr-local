@@ -6,7 +6,11 @@ abstract: >-
   Copilot+ PCs. Wraps a native ARM64 whisper.cpp build (NEON + dotprod +
   i8mm) around MediaTek's Breeze-ASR-25 fine-tune of Whisper-large-v2.
   First public Windows ARM64 deployment recipe for Breeze-ASR-25; no
-  NVIDIA GPU, no cloud.
+  NVIDIA GPU, no cloud. Includes optional Q4_0 KleidiAI quantization
+  (1.4-1.7x faster, identical transcript on Mandarin golden samples) and
+  greedy decoding flag (17.5% faster on long Mandarin audio). 144 TDD
+  tests; multi-file batch mode; automatic CPU-core / audio-context /
+  VAD / flash-attention tuning.
 authors:
   - alias: thc1006
     name: "thc1006"

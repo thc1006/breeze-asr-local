@@ -1,4 +1,4 @@
-# Perf journey: RTF 13.7× → 1.4× on Snapdragon X Plus
+# Perf journey: RTF 13.7× → 0.47× on Snapdragon X Plus
 
 Full story of why running MediaTek Breeze-ASR-25 on a Copilot+ PC needs more than `pip install`, and the nine-fold speed-up you get once you stop fighting the platform.
 
@@ -90,7 +90,7 @@ No native-ARM64 Python wheel for whisper anywhere on PyPI. The real shortcut is 
 
 The tooling cascade that has to click together:
 
-1. **LLVM ≥ 20 with aarch64-pc-windows-msvc target**
+1. **LLVM ≥ 22 with aarch64-pc-windows-msvc target**
    - `winget install LLVM.LLVM` pulls the right ARM64 build automatically on a WoA host
    - Gives you `clang.exe`, `clang++.exe`, `llvm-rc.exe`, `lld-link.exe`
 
@@ -224,8 +224,12 @@ full list with CLI flags; brief summary here:
 
 - **KleidiAI Q4_0 path** — `-DGGML_NATIVE=ON` on LLVM 22 emits NEON `sdot`
   kernels for Q4_0 matmul. Breeze-ASR-25 Q4_0 (from `lsheep/Breeze-ASR-25-ggml`)
-  on a 57.6 s Mandarin clip: **21.9 s vs Q8_0 30.2 s — 1.38× faster with
-  identical transcript.** On the 5.8 s clip: 6.2 s vs 10.4 s — 1.69× faster.
+  on a 57.6 s Mandarin clip, measured in the same back-to-back benchmark run
+  (power plan "Balanced", same `-p 2 -t 4 --vad -nfa` config):
+  **21.9 s for Q4_0 vs 30.2 s for Q8_0 — 1.38x faster with identical transcript.**
+  On the 5.8 s clip: 6.2 s vs 10.4 s — 1.69x faster.
+  (The 27.1 s figure cited in the README's canonical long-audio table is from
+  a separate Q8_0 run; run-to-run variance on this SoC is typically 5-15 %.)
   Exposed as `--quant q4_0`. Default stays Q8_0 because the precision-first
   contract was made on Q8_0; users opt in when they need the extra speed.
 - **Greedy decoding** (`--decode greedy`, sets `-bs 1 -bo 1`) — on a 57.6 s
