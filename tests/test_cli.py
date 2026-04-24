@@ -180,6 +180,103 @@ class TestParseArgs:
         assert args.output == out
 
 
+class TestMultiFileBatch:
+    """CLI accepts N audio paths; each produces its own transcript.
+    Model + VAD are loaded once, amortized across the batch."""
+
+    def _stub_pipeline(self, tmp_path: Path, mocker, num_segments: int = 1):
+        wav = tmp_path / "converted.wav"
+        wav.write_bytes(b"\x00")
+        model = tmp_path / "m.bin"
+        model.write_bytes(b"\x00")
+        mocker.patch(
+            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 5.0, True)
+        )
+        mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
+        mocker.patch("asr_local.cli.ensure_vad_model", return_value=tmp_path / "vad.bin")
+        mocker.patch(
+            "asr_local.cli.run_whisper",
+            return_value=[TimestampedSegment(0.0, 1.0, "你好")] * num_segments,
+        )
+        # real save_transcript so we can check per-file outputs exist
+        # NOTE: not patched — writes real files under tmp_path
+
+    def test_parse_args_accepts_multiple_audio(self, tmp_path: Path) -> None:
+        args = cli.parse_args([str(tmp_path / "a.m4a"), str(tmp_path / "b.m4a")])
+        assert len(args.audio_paths) == 2
+
+    def test_parse_args_requires_at_least_one(self) -> None:
+        with pytest.raises(SystemExit):
+            cli.parse_args([])
+
+    def test_two_files_each_produce_transcript(
+        self, tmp_path: Path, mocker
+    ) -> None:
+        a1, a2 = tmp_path / "a1.m4a", tmp_path / "a2.m4a"
+        a1.write_bytes(b"\x00")
+        a2.write_bytes(b"\x00")
+        self._stub_pipeline(tmp_path, mocker)
+        rc = cli.main([str(a1), str(a2)])
+        assert rc == 0
+        assert (tmp_path / "a1.transcript.txt").exists()
+        assert (tmp_path / "a2.transcript.txt").exists()
+
+    def test_output_flag_rejected_with_multiple_files(
+        self, tmp_path: Path, mocker, capsys
+    ) -> None:
+        a1, a2 = tmp_path / "a1.m4a", tmp_path / "a2.m4a"
+        a1.write_bytes(b"\x00")
+        a2.write_bytes(b"\x00")
+        rc = cli.main([str(a1), str(a2), "--output", str(tmp_path / "out.txt")])
+        assert rc == 1
+        assert "--output" in capsys.readouterr().err
+
+    def test_missing_file_pre_flight_exits_1(
+        self, tmp_path: Path, capsys
+    ) -> None:
+        ok = tmp_path / "ok.m4a"
+        ok.write_bytes(b"\x00")
+        rc = cli.main([str(ok), str(tmp_path / "missing.m4a")])
+        assert rc == 1
+        assert "not found" in capsys.readouterr().err.lower()
+
+    def test_model_loaded_exactly_once_for_batch(
+        self, tmp_path: Path, mocker
+    ) -> None:
+        a1, a2, a3 = [tmp_path / f"a{i}.m4a" for i in (1, 2, 3)]
+        for a in (a1, a2, a3):
+            a.write_bytes(b"\x00")
+        self._stub_pipeline(tmp_path, mocker)
+        ensure = mocker.patch(
+            "asr_local.cli.ensure_ggml", return_value=tmp_path / "m.bin"
+        )
+        cli.main([str(a1), str(a2), str(a3)])
+        assert ensure.call_count == 1, "model should be loaded once per batch"
+
+    def test_error_in_one_file_does_not_stop_others(
+        self, tmp_path: Path, mocker
+    ) -> None:
+        a1, a2 = tmp_path / "a1.m4a", tmp_path / "a2.m4a"
+        a1.write_bytes(b"\x00")
+        a2.write_bytes(b"\x00")
+        self._stub_pipeline(tmp_path, mocker)
+        # a1 fails on run_whisper; a2 should still succeed.
+        from asr_local.transcriber import WhisperCliError
+
+        call_count = {"n": 0}
+
+        def run_whisper_stub(**kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise WhisperCliError("a1 failed")
+            return [TimestampedSegment(0.0, 1.0, "b")]
+
+        mocker.patch("asr_local.cli.run_whisper", side_effect=run_whisper_stub)
+        rc = cli.main([str(a1), str(a2)])
+        assert rc == 4, "exit code is worst individual (WhisperCliError -> 4)"
+        assert (tmp_path / "a2.transcript.txt").exists(), "a2 must still be transcribed"
+
+
 class TestMain:
     def test_missing_audio_exits_nonzero(self, tmp_path: Path, capsys) -> None:
         rc = cli.main([str(tmp_path / "nope.wav")])
@@ -201,7 +298,7 @@ class TestMain:
 
         mocker.patch(
             "asr_local.cli.convert_to_16k_mono_wav",
-            return_value=(wav_out, 5.0),
+            return_value=(wav_out, 5.0, True),
         )
         mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
         mocker.patch("asr_local.cli.ensure_vad_model", return_value=tmp_path / "vad.bin")
@@ -224,7 +321,7 @@ class TestMain:
         audio.write_bytes(b"\x00")
         mocker.patch(
             "asr_local.cli.convert_to_16k_mono_wav",
-            return_value=(tmp_path / "converted.wav", 1.0),
+            return_value=(tmp_path / "converted.wav", 1.0, True),
         )
         model = tmp_path / "m"
         model.write_bytes(b"\x00")
@@ -266,7 +363,7 @@ class TestMain:
         model = tmp_path / "m.bin"
         model.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0)
+            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
         )
         mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
         mocker.patch(
@@ -287,7 +384,7 @@ class TestMain:
         wav = tmp_path / "converted.wav"
         wav.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0)
+            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
         )
         mocker.patch(
             "asr_local.cli.ensure_ggml",
@@ -305,7 +402,7 @@ class TestMain:
         wav = tmp_path / "converted.wav"
         wav.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0)
+            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
         )
         mocker.patch(
             "asr_local.cli.ensure_ggml",
@@ -325,7 +422,7 @@ class TestMain:
         model = tmp_path / "m.bin"
         model.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0)
+            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
         )
         mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
         rw = mocker.patch("asr_local.cli.run_whisper", return_value=[])
@@ -346,7 +443,7 @@ class TestMain:
         model = tmp_path / "m.bin"
         model.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0)
+            "asr_local.cli.convert_to_16k_mono_wav", return_value=(wav, 1.0, True)
         )
         mocker.patch("asr_local.cli.ensure_ggml", return_value=model)
         mocker.patch(
@@ -365,7 +462,7 @@ class TestMain:
         audio.write_bytes(b"\x00")
         mocker.patch(
             "asr_local.cli.convert_to_16k_mono_wav",
-            return_value=(tmp_path / "converted.wav", 1.0),
+            return_value=(tmp_path / "converted.wav", 1.0, True),
         )
         model = tmp_path / "m"
         model.write_bytes(b"\x00")
@@ -385,7 +482,7 @@ class TestMain:
         tmp_wav = tmp_path / "converted.wav"
         tmp_wav.write_bytes(b"\x00")
         mocker.patch(
-            "asr_local.cli.convert_to_16k_mono_wav", return_value=(tmp_wav, 1.0)
+            "asr_local.cli.convert_to_16k_mono_wav", return_value=(tmp_wav, 1.0, True)
         )
         model = tmp_path / "m"
         model.write_bytes(b"\x00")

@@ -95,7 +95,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         prog="asr-local",
         description="Local Taiwanese Mandarin ASR (MediaTek Breeze-ASR-25 via whisper.cpp).",
     )
-    parser.add_argument("audio_path", type=Path, help="Input audio file (wav/mp3/ogg/flac/m4a/...)")
+    parser.add_argument(
+        "audio_paths",
+        type=Path,
+        nargs="+",
+        help="One or more input audio files (wav/mp3/ogg/flac/m4a/...). Model is "
+             "loaded once and amortized across the batch.",
+    )
     parser.add_argument(
         "--quant",
         choices=sorted(VARIANT_FILES),
@@ -154,24 +160,22 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = parse_args(argv)
-
-    if not args.audio_path.exists():
-        print(f"Error: audio file not found: {args.audio_path}", file=sys.stderr)
-        return 1
-
-    output_path = args.output or args.audio_path.with_suffix(".transcript.txt")
+def _transcribe_one(
+    audio_path: Path,
+    output_path: Path,
+    model_path: Path,
+    args: argparse.Namespace,
+) -> int:
+    """Run the 4-step pipeline for a single audio file. Returns exit code."""
     wav_path: Path | None = None
-
+    owns_wav: bool = False
     try:
-        print(f"[1/4] Converting audio: {args.audio_path.name}")
-        wav_path, duration = convert_to_16k_mono_wav(args.audio_path)
-        print(f"      -> 16 kHz mono WAV, {duration:.1f}s")
-
-        print(f"[2/4] Preparing model (variant={args.quant})")
-        model_path = ensure_ggml(variant=args.quant)
-        print(f"      -> {model_path.name} ({model_path.stat().st_size / 1e9:.2f} GB)")
+        print(f"  [1/3] Converting audio: {audio_path.name}")
+        wav_path, duration, owns_wav = convert_to_16k_mono_wav(audio_path)
+        if owns_wav:
+            print(f"        -> 16 kHz mono WAV, {duration:.1f}s")
+        else:
+            print(f"        -> input already target format, skipped ffmpeg ({duration:.1f}s)")
 
         audio_ctx = args.audio_ctx if args.audio_ctx is not None else choose_audio_ctx(duration)
         flash_attn = (
@@ -184,9 +188,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         use_vad = args.vad if args.vad is not None else choose_vad(duration)
         vad_model_path = ensure_vad_model() if use_vad else None
         print(
-            f"[3/4] Transcribing (-p {processors} -t {threads}, "
-            f"language={args.language}, audio_ctx={audio_ctx or 'full'}, "
-            f"flash_attn={'on' if flash_attn else 'off'}, "
+            f"  [2/3] Transcribing (-p {processors} -t {threads}, "
+            f"audio_ctx={audio_ctx or 'full'}, "
+            f"fa={'on' if flash_attn else 'off'}, "
             f"vad={'on' if use_vad else 'off'})"
         )
         t0 = time.perf_counter()
@@ -205,36 +209,75 @@ def main(argv: Sequence[str] | None = None) -> int:
         elapsed = time.perf_counter() - t0
         rtf = elapsed / duration if duration > 0 else float("inf")
         print(
-            f"      -> {len(segments)} segments in {elapsed:.1f}s "
+            f"        -> {len(segments)} segments in {elapsed:.1f}s "
             f"(RTF {rtf:.2f}x realtime)"
         )
 
-        print(f"[4/4] Writing transcript: {output_path}")
+        print(f"  [3/3] Writing transcript: {output_path}")
         written = save_transcript(segments, output_path)
         if written is None:
-            print("Warning: transcription empty; no output file written.", file=sys.stderr)
+            print(
+                f"Warning: {audio_path.name} transcription empty; no output written.",
+                file=sys.stderr,
+            )
             return 2
-        print("Done.")
         return 0
     except AudioConversionError as e:
-        print(f"Error: audio conversion failed - {e}", file=sys.stderr)
+        print(f"Error: {audio_path.name} audio conversion failed - {e}", file=sys.stderr)
         return 3
     except WhisperCliError as e:
-        print(f"Error: whisper-cli failed - {e}", file=sys.stderr)
+        print(f"Error: {audio_path.name} whisper-cli failed - {e}", file=sys.stderr)
         return 4
-    except GgmlValidationError as e:
-        print(f"Error: model validation failed - {e}", file=sys.stderr)
-        return 5
-    except OSError as e:
-        # HF download network errors (ConnectionError/TimeoutError) + generic IO.
-        print(f"Error: model download or IO failed - {e}", file=sys.stderr)
-        return 6
     finally:
-        if wav_path is not None and wav_path.exists():
+        if owns_wav and wav_path is not None and wav_path.exists():
             try:
                 wav_path.unlink()
             except OSError:
                 pass
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+
+    # Pre-flight: all inputs must exist, --output incompatible with batch.
+    for p in args.audio_paths:
+        if not p.exists():
+            print(f"Error: audio file not found: {p}", file=sys.stderr)
+            return 1
+    if len(args.audio_paths) > 1 and args.output is not None:
+        print(
+            "Error: --output cannot be set with multiple input files "
+            "(each file gets its own <audio>.transcript.txt).",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Model prep once (amortized across batch; HF cache hits after first download).
+    try:
+        print(f"[0/N] Preparing model (variant={args.quant})")
+        model_path = ensure_ggml(variant=args.quant)
+        print(f"      -> {model_path.name} ({model_path.stat().st_size / 1e9:.2f} GB)")
+    except GgmlValidationError as e:
+        print(f"Error: model validation failed - {e}", file=sys.stderr)
+        return 5
+    except OSError as e:
+        print(f"Error: model download or IO failed - {e}", file=sys.stderr)
+        return 6
+
+    worst_rc = 0
+    total = len(args.audio_paths)
+    for idx, audio_path in enumerate(args.audio_paths, 1):
+        if total > 1:
+            print(f"\n=== File {idx}/{total}: {audio_path.name} ===")
+        output_path = args.output or audio_path.with_suffix(".transcript.txt")
+        rc = _transcribe_one(audio_path, output_path, model_path, args)
+        worst_rc = max(worst_rc, rc)
+
+    if total > 1:
+        print(f"\n=== Batch done: {total} files, worst exit code {worst_rc} ===")
+    elif worst_rc == 0:
+        print("Done.")
+    return worst_rc
 
 
 if __name__ == "__main__":

@@ -66,6 +66,12 @@ class TestVariantTable:
         assert "fp16" in VARIANT_FILES
         assert VARIANT_FILES["fp16"] == "ggml-model.bin"
 
+    def test_q4_0_variant_present(self) -> None:
+        # KleidiAI-fast path: measured 1.4-1.7x vs q8_0 with identical
+        # transcript on the Breeze-ASR-25 golden sample.
+        assert "q4_0" in VARIANT_FILES
+        assert VARIANT_FILES["q4_0"] == "ggml-model-q4_0.bin"
+
     def test_every_variant_has_expected_size(self) -> None:
         for v in VARIANT_FILES:
             assert v in EXPECTED_SIZES
@@ -93,6 +99,19 @@ class TestEnsureGgmlOrchestration:
         args, kwargs = mock_dl.call_args
         assert kwargs.get("repo_id") == "alan314159/Breeze-ASR-25-whispercpp"
         assert kwargs.get("filename") == "ggml-model-q8_0.bin"
+
+    def test_q4_0_downloads_from_lsheep_repo(
+        self, tmp_path: Path, mocker
+    ) -> None:
+        fake = tmp_path / "fake-q4_0.bin"
+        fake.write_bytes(b"lmgg" + b"\x00" * (EXPECTED_SIZES["q4_0"] - 4))
+        mock_dl = mocker.patch(
+            "asr_local.model.hf_hub_download", return_value=str(fake)
+        )
+        ensure_ggml(variant="q4_0")
+        kwargs = mock_dl.call_args.kwargs
+        assert kwargs["repo_id"] == "lsheep/Breeze-ASR-25-ggml"
+        assert kwargs["filename"] == "ggml-model-q4_0.bin"
 
     def test_invalid_magic_after_download_raises(
         self, tmp_path: Path, mocker

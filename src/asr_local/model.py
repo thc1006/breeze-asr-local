@@ -12,12 +12,17 @@ from typing import Final
 from huggingface_hub import hf_hub_download
 
 REPO_ID: Final[str] = "alan314159/Breeze-ASR-25-whispercpp"
+# q4_0 isn't published by alan314159 but lsheep hosts it and hits the ARM
+# KleidiAI + NEON sdot fast path on Snapdragon X (measured ~1.4-1.7x vs q8_0
+# with identical transcript on Mandarin golden samples).
+REPO_FOR_Q4_0: Final[str] = "lsheep/Breeze-ASR-25-ggml"
 
 VARIANT_FILES: Final[dict[str, str]] = {
     "q8_0": "ggml-model-q8_0.bin",
     "fp16": "ggml-model.bin",
     "q5_k": "ggml-model-q5_k.bin",
     "q4_k": "ggml-model-q4_k.bin",
+    "q4_0": "ggml-model-q4_0.bin",
 }
 
 EXPECTED_SIZES: Final[dict[str, int]] = {
@@ -25,7 +30,15 @@ EXPECTED_SIZES: Final[dict[str, int]] = {
     "fp16": 3_094_623_708,
     "q5_k": 1_080_732_108,
     "q4_k": 888_932_908,
+    "q4_0": 888_932_908,
 }
+
+
+def _repo_for_variant(variant: str) -> str:
+    """Pick the HF repo a given variant lives in (most share one, q4_0 differs)."""
+    if variant == "q4_0":
+        return REPO_FOR_Q4_0
+    return REPO_ID
 
 # Accepted leading magics across GGML format generations.
 # whisper.cpp legacy format stores uint32 0x67676d6c little-endian → b"lmgg".
@@ -70,7 +83,7 @@ def ensure_ggml(variant: str = "q8_0", cache_dir: Path | str | None = None) -> P
         )
 
     local_path_str = hf_hub_download(
-        repo_id=REPO_ID,
+        repo_id=_repo_for_variant(variant),
         filename=VARIANT_FILES[variant],
         cache_dir=str(cache_dir) if cache_dir else None,
     )

@@ -19,33 +19,34 @@ from asr_local.audio import AudioConversionError, convert_to_16k_mono_wav
 
 class TestConvertResamplesAndDownmixes:
     def test_output_exists_and_is_wav(self, wav_44k_stereo: Path) -> None:
-        out, duration = convert_to_16k_mono_wav(wav_44k_stereo)
+        out, duration, owns = convert_to_16k_mono_wav(wav_44k_stereo)
         try:
             assert out.exists()
             assert out.suffix.lower() == ".wav"
             assert duration == pytest.approx(2.0, abs=0.05)
+            assert owns is True
         finally:
-            out.unlink(missing_ok=True)
+            if owns:
+                out.unlink(missing_ok=True)
 
     def test_output_is_16khz_mono_pcm16(self, wav_44k_stereo: Path) -> None:
-        out, _ = convert_to_16k_mono_wav(wav_44k_stereo)
+        out, _, owns = convert_to_16k_mono_wav(wav_44k_stereo)
         try:
             info = sf.info(str(out))
             assert info.samplerate == 16000
             assert info.channels == 1
             assert info.subtype == "PCM_16"
         finally:
-            out.unlink(missing_ok=True)
+            if owns:
+                out.unlink(missing_ok=True)
 
-    def test_passthrough_for_already_target_format(self, wav_16k_mono: Path) -> None:
-        # Still converts (safer than heuristics) but duration + format must match.
-        out, duration = convert_to_16k_mono_wav(wav_16k_mono)
-        try:
-            info = sf.info(str(out))
-            assert info.samplerate == 16000 and info.channels == 1
-            assert duration == pytest.approx(1.5, abs=0.05)
-        finally:
-            out.unlink(missing_ok=True)
+    def test_fast_path_passthrough_for_target_format(self, wav_16k_mono: Path) -> None:
+        # Already 16 kHz mono PCM_16 — should skip ffmpeg entirely.
+        out, duration, owns = convert_to_16k_mono_wav(wav_16k_mono)
+        assert out == wav_16k_mono, "fast path must return input path unchanged"
+        assert owns is False, "caller must not delete the user's original file"
+        assert duration == pytest.approx(1.5, abs=0.05)
+        assert wav_16k_mono.exists(), "fast path should not touch the source file"
 
 
 class TestConvertErrors:
@@ -83,13 +84,15 @@ class TestConvertRealM4a:
     """
 
     def test_m4a_converts_to_valid_wav(self, real_m4a: Path) -> None:
-        out, duration = convert_to_16k_mono_wav(real_m4a)
+        out, duration, owns = convert_to_16k_mono_wav(real_m4a)
         try:
             info = sf.info(str(out))
             assert info.samplerate == 16000
             assert info.channels == 1
             assert info.subtype == "PCM_16"
+            assert owns is True
             # 1woman.m4a is ~5-10 s of speech; sanity-bound duration.
             assert 1.0 < duration < 120.0
         finally:
-            out.unlink(missing_ok=True)
+            if owns:
+                out.unlink(missing_ok=True)
