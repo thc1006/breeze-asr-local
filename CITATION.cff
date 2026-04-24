@@ -1,0 +1,40 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "breeze-asr-local"
+abstract: >-
+  Local Taiwanese Mandarin speech-to-text on Windows ARM64 Snapdragon X
+  Copilot+ PCs. Wraps a native ARM64 whisper.cpp build (NEON + dotprod +
+  i8mm) around MediaTek's Breeze-ASR-25 fine-tune of Whisper-large-v2.
+  First public Windows ARM64 deployment recipe for Breeze-ASR-25; no
+  NVIDIA GPU, no cloud.
+authors:
+  - alias: thc1006
+    name: "thc1006"
+repository-code: "https://github.com/thc1006/breeze-asr-local"
+url: "https://github.com/thc1006/breeze-asr-local"
+license: Apache-2.0
+keywords:
+  - speech-recognition
+  - automatic-speech-recognition
+  - asr
+  - whisper
+  - whisper-cpp
+  - breeze-asr-25
+  - taiwanese-mandarin
+  - windows-on-arm
+  - snapdragon-x
+  - copilot-plus-pc
+  - on-device-ai
+  - edge-ai
+  - arm64
+references:
+  - type: software
+    title: "Breeze-ASR-25"
+    authors:
+      - name: "MediaTek Research"
+    url: "https://huggingface.co/MediaTek-Research/Breeze-ASR-25"
+  - type: software
+    title: "whisper.cpp"
+    authors:
+      - name: "Georgi Gerganov and contributors"
+    url: "https://github.com/ggml-org/whisper.cpp"

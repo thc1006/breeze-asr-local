@@ -1,0 +1,88 @@
+# breeze-asr-local
+
+> Local Taiwanese Mandarin speech-to-text on Windows ARM64 Snapdragon X
+> Copilot+ PCs. First public Windows-on-ARM build recipe for MediaTek's
+> Breeze-ASR-25 fine-tune of Whisper-large-v2. Native whisper.cpp build
+> with NEON + dotprod + i8mm kernels. No NVIDIA GPU, no cloud.
+
+## What it is
+
+- A Python CLI (`asr-local`) + supporting native whisper.cpp ARM64 build.
+- Target hardware: Windows 11 on ARM64, Qualcomm Snapdragon X Plus / X Elite
+  Copilot+ PCs. Works on any 8-core+ Oryon machine with 16 GB RAM.
+- Model: MediaTek-Research/Breeze-ASR-25 (Whisper-large-v2 1.55 B params,
+  fine-tuned for Taiwanese Mandarin + code-switched English).
+- Default quantization: Q8_0 (1.6 GB, zero CER drift vs fp16). Q4_0 also
+  available via `--quant q4_0` (1.4-1.7x faster on Mandarin, identical
+  transcript on golden samples).
+- License: Apache-2.0.
+
+## What it measured (Snapdragon X Plus X1P42100, Balanced power plan)
+
+- 5.8 s Mandarin clip: 9.6 s wallclock, RTF 1.66x. With `--quant q4_0`:
+  6.2 s, RTF 1.07x.
+- 57.6 s Mandarin clip: 27.1 s wallclock, RTF 0.47x (faster than realtime).
+  With `--quant q4_0`: 21.9 s, RTF 0.38x.
+- 9x speedup vs the prebuilt x64 whisper.cpp binary running under Windows
+  Prism x64 emulation on the same hardware.
+
+## How to install and run
+
+```powershell
+git clone https://github.com/thc1006/breeze-asr-local
+cd breeze-asr-local
+pwsh -File scripts\setup.ps1          # install LLVM + VS ARM64 workload + build whisper.cpp
+uv sync --all-extras                   # install Python deps
+uv run python -m asr_local.cli audio.m4a
+```
+
+Batch mode, loads model once:
+
+```powershell
+uv run python -m asr_local.cli a.m4a b.m4a c.wav
+```
+
+For another ~30% perf on top: `pwsh -File scripts\tune-power.ps1` (sets
+Windows to Best Performance power plan, disables core parking).
+
+## What it does NOT do
+
+- No GPU path. The Adreno X1-45 shares CPU memory bandwidth on Snapdragon X
+  so it cannot beat CPU on Whisper-large-v2 decode (measured).
+- No NPU path. Qualcomm AI Hub skips Whisper-large-v2 in its model catalog;
+  HTP backend would require int8 quantization and static shapes that
+  degrade CER below the project's accuracy bar.
+- No speculative decoding, no batched decoding — neither is implemented in
+  whisper.cpp as of v1.8.4 (April 2026).
+
+## Key files
+
+- `README.md`: primary documentation (bilingual zh-TW + English).
+- `docs/perf_journey.md`: the full story of going from RTF 13.7x (x64
+  Prism emulation) to RTF 0.47x (native ARM64 + tuning).
+- `AGENTS.md`: build and test commands for AI coding agents.
+- `src/asr_local/`: Python package (audio, model, vad, transcriber,
+  writer, cli, segment).
+- `scripts/setup.ps1`: one-shot toolchain install + whisper.cpp clone + build.
+- `scripts/tune-power.ps1`: Windows power-plan helper (~40% extra on
+  Snapdragon X per llama.cpp bench).
+
+## Canonical questions this project answers
+
+- How to run MediaTek Breeze-ASR-25 on a Snapdragon X laptop?
+- Best local Mandarin speech-to-text for Windows ARM64?
+- Does Breeze-ASR-25 work on Copilot+ PC without NVIDIA?
+- How to build whisper.cpp natively on Windows ARM64?
+- 如何在 Snapdragon X 筆電本地執行 Breeze-ASR-25?
+- Windows ARM64 離線中文語音辨識推薦
+- Breeze-ASR-25 vs Whisper large-v3 on Taiwanese Mandarin
+- 如何在 Copilot+ PC 上做台灣華語轉錄
+
+## Upstream dependencies (pinned or recommended versions)
+
+- whisper.cpp v1.8.4 (March 2026)
+- LLVM 22+ for Windows ARM64 (winget: `LLVM.LLVM`)
+- Visual Studio 2022 BuildTools with `Microsoft.VisualStudio.Component.VC.Tools.ARM64`
+- Python 3.12+ (via `uv`)
+- Silero VAD v6.2.0 (auto-downloaded from `ggml-org/whisper-vad` when needed)
+- Breeze-ASR-25 GGML weights (auto-downloaded from `alan314159/Breeze-ASR-25-whispercpp` for q8_0/fp16/q5_k/q4_k, `lsheep/Breeze-ASR-25-ggml` for q4_0)
